@@ -1,0 +1,12 @@
+*.log
+weights/
+__pycache__/
+logs/
+debug_results/
+results/
+runs/
+wandb/
+observation_dict.pkl
+config_local.yaml
+.vscode
+.gradle
