@@ -47,11 +47,15 @@ def main(cfg):
         filemode='w'
     )
     
-    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    torch.cuda.set_device(1)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     num_envs = cfg.env.num_envs
     envs = gym.vector.AsyncVectorEnv([make_env(cfg.env.task, cfg.agent.seed + i, idx, results_dir) for idx, i in enumerate(range(num_envs))])
     agent = PPOagent(envs, cfg, device)
+
+    if cfg.agent.load_model:
+        agent.load_model(cfg.agent.checkpoint_path, cfg.agent.image_checkpoint_path)
 
     num_steps = cfg.agent.num_steps
     batch_size = int(num_steps * num_envs)
@@ -86,7 +90,12 @@ def main(cfg):
                         writer.add_scalar("charts/episodic_length", ep_len, global_step)
 
         agent.learn(last_obs=obs, last_done=next_done, writer=writer, global_step=global_step)
-        agent.save_network(update+1)
+
+        if num_updates < 40:
+            agent.save_model(update+1)
+        elif (update + 1) % (num_updates // 40) == 0:
+            agent.save_model(update+1)
+        # agent.save_image_encoder(update+1)
 
     envs.close()
     writer.close()

@@ -11,7 +11,8 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from mineclip import SimpleFeatureFusion, MineCLIP
+from mineclip import MineCLIP
+from mineclip import SimpleFeatureFusion
 from mineclip.mineagent.batch import Batch
 from mineclip.mineagent.actor.distribution import MultiCategorical
 from mineclip.utils import build_mlp
@@ -19,10 +20,12 @@ from mineclip.utils import build_mlp
 from groundingdino.models import GroundingDINO
 import groundingdino.datasets.transforms as T
 from PIL import Image
+from transformers import AutoProcessor
 
-from .utils import set_MineCLIP, set_gDINO, layer_init
+from .utils import set_MineCLIP, set_gDINO, layer_init, set_hf_gDINO
 from .inference import predict
 from agents import features_mlp as F
+from .encoders import ImageEncoder
 
 class PPOBuffer:
     def __init__(self, env, cfg, device) -> None:
@@ -33,7 +36,7 @@ class PPOBuffer:
         num_envs = cfg.env.num_envs
 
         obss = {
-            "rgb_feat": torch.zeros((capacity, num_envs, 512)).to(device),
+            "rgb_feat": torch.zeros((capacity, num_envs, 3, 160, 256)).to(device),      # 512, (256, 900), (3, 160, 256)
             "compass": torch.zeros((capacity, num_envs, 4)).to(device),
             "gps": torch.zeros((capacity, num_envs, 3)).to(device),
             # "biome_id": torch.zeros((num_steps, num_envs, 1)),
@@ -90,13 +93,16 @@ class PPOBuffer:
                 else:
                     self.capture_video(0, inds[ep], ep_num.item(), final_reward.item())
 
-        self.remain_frames = self.frames[inds[-1].item():, agent_idx].squeeze()
+        if len(inds) > 0:
+            self.remain_frames = self.frames[inds[-1].item():, agent_idx].squeeze()
         self.ep_counter += self.dones.sum(dim=0)
         self.pointer = 0
 
     def capture_video(self, first_frame_idx, last_frame_idx, ep, rew):
         frames = self.frames[first_frame_idx:last_frame_idx,0].squeeze()
         if first_frame_idx == 0 and self.remain_frames is not None:
+            if (self.remain_frames.shape != frames.shape):
+                logging.info(f"remain: {self.remain_frames.shape}, frame: {self.remain_frames.shape}, frames: {self.frames.shape}")
             frames = np.concatenate((self.remain_frames, frames), axis=0)
             self.remain_frames = None
         if len(frames) > 0:
@@ -115,7 +121,7 @@ class PPOBuffer:
     def get_batch(self):
         b_obss = {}
         for key, value in self.obss.items():
-            b_obss[key] = value.reshape(-1, value.shape[-1])
+            b_obss[key] = value.reshape((-1,) + value.shape[2:])
 
         b_obss = Batch(**b_obss)
         b_actions = self.actions.reshape((-1,) + self.env.single_action_space.shape)
@@ -228,8 +234,61 @@ class PolicyNetwork(nn.Module):
             **cfg.critic,
         )
 
+        img_model = cfg.feature_net_kwargs.rgb_feat.image_model
+        if img_model == 'mineclip':
+            self.image_model: MineCLIP = set_MineCLIP(cfg.mineclip)
+
+        elif img_model == 'gdino':
+            self.image_model = set_gDINO(cfg, device)
+
+        elif img_model == 'hf_gdino':
+            self.image_model = set_hf_gDINO(cfg, device)
+            self.processor = AutoProcessor.from_pretrained("IDEA-Research/grounding-dino-tiny")
+
+        elif img_model == 'image_encoder':
+            self.image_model = ImageEncoder()
+
+        else:
+            raise ValueError("Invalid value for img_model. Supported options are 'mineclip' and 'gdino'.")
+
+    def get_features(self, images: torch.Tensor):
+        # calculated from 21K video clips, which contains 2.8M frames
+        MC_IMAGE_MEAN = (0.3331, 0.3245, 0.3051)
+        MC_IMAGE_STD = (0.2439, 0.2493, 0.2873)
+        BOX_TRESHOLD = 0.35
+        TEXT_TRESHOLD = 0.25
+        
+        if isinstance(self.image_model, MineCLIP):
+            return self.image_model.forward_image_features(images.to(self.device))
+        
+        if isinstance(self.image_model, ImageEncoder):
+            return self.image_model(images.to(self.device))
+        
+        if self.cfg.feature_net_kwargs.rgb_feat.image_model == "gdino":
+            TEXT_PROMPT = "spider . cow . sky . animal . tree ."
+            logits = predict(
+                model=self.image_model,
+                images=images.cpu().numpy(),
+                caption=TEXT_PROMPT,
+                box_threshold=BOX_TRESHOLD,
+                text_threshold=TEXT_TRESHOLD,
+                device=self.device,
+                train=self.cfg.agent.train_image_model,
+            )
+
+            return logits
+        else:
+            TEXT_PROMPT = "spider . cow . sky . animal . tree ."
+            inputs = self.processor(images=images, text=[TEXT_PROMPT]*len(images), return_tensors="pt").to(self.device)
+            # with torch.no_grad():
+            outputs = self.image_model(**inputs, output_hidden_states=True)
+            logits = outputs.decoder_hidden_states[1].transpose(-1,-2)
+            return logits
+
+    
     def get_action_and_value(self, batch, action=None):
-        hidden, _ = self.network_model(batch)
+        img_feat = self.get_features(batch.rgb_feat)
+        hidden, _ = self.network_model(Batch(rgb_feat=img_feat, compass=batch.compass, gps=batch.gps))
         logits, _ = self.actor(hidden)
         value, _ = self.critic(hidden)
 
@@ -242,27 +301,20 @@ class PolicyNetwork(nn.Module):
         return action, logprob, entropy, value
     
     def get_value(self, batch):
-        hidden, _ = self.network_model(batch)
+        img_feat = self.get_features(batch.rgb_feat)
+        hidden, _ = self.network_model(Batch(rgb_feat=img_feat, compass=batch.compass, gps=batch.gps))
         value, _ = self.critic(hidden)
         return value
-
 class PPOagent:
     def __init__(self, env, cfg, device) -> None:
 
         num_steps = cfg.agent.num_steps
         batch_size = int(num_steps * cfg.env.num_envs)
         num_updates  = cfg.agent.total_timesteps // batch_size
-        img_model = cfg.feature_net_kwargs.rgb_feat.image_model
 
         self.bf = PPOBuffer(env, cfg, device)
-        if img_model == 'mineclip':
-            self.image_model: MineCLIP = set_MineCLIP(cfg.mineclip).to(device)
-        elif img_model == 'gdino':
-            self.image_model: GroundingDINO = set_gDINO(cfg)
-        else:
-            raise ValueError("Invalid value for img_model. Supported options are 'mineclip' and 'gdino'.")
-        
         self.policy_model = PolicyNetwork(env, cfg, device).to(device)
+
         self.optimizer = Adam(self.policy_model.parameters(), lr = cfg.agent.learning_rate)
         self.scheduler = CosineAnnealingLR(self.optimizer, T_max=num_updates, eta_min=cfg.agent.min_lr)
         self.env = env
@@ -276,43 +328,21 @@ class PPOagent:
     
     def store_experience(self, *args) -> None:
         self.bf.store(*args)
-
-    def get_features(self, images: np.ndarray):
-        # calculated from 21K video clips, which contains 2.8M frames
-        MC_IMAGE_MEAN = (0.3331, 0.3245, 0.3051)
-        MC_IMAGE_STD = (0.2439, 0.2493, 0.2873)
-        BOX_TRESHOLD = 0.35
-        TEXT_TRESHOLD = 0.25
         
-        if isinstance(self.image_model, MineCLIP):
-            img_tensor = torch.from_numpy(images).to(self.device)
-            return self.image_model.forward_image_features(img_tensor)
-        else:
-            transform = T.Compose(
-                [
-                    T.RandomResize([800], max_size=1333),
-                    T.ToTensor(),
-                    T.Normalize(MC_IMAGE_MEAN, MC_IMAGE_STD),
-                ]
-            )
-            img_array = images.transpose((0,2,3,1))
-            # img = Image.fromarray(img_array)
-            img_transformed, _ = transform(img_array, None)
-            
-            TEXT_PROMPT = "spider . cow . sky . animal . tree ."
-            logits = predict(
-                model=self.image_model,
-                image=img_transformed,
-                caption=TEXT_PROMPT,
-                box_threshold=BOX_TRESHOLD,
-                text_threshold=TEXT_TRESHOLD
-            )
-
-            return logits
     def process_obs(self, obs):
+        pitch = torch.deg2rad(torch.from_numpy(obs['pitch']))
+        yaw = torch.deg2rad(torch.from_numpy(obs['yaw']))
+        new_obs = {
+            "rgb_feat": torch.tensor(obs['rgb']),
+            "compass": torch.cat((torch.sin(pitch), torch.cos(pitch), torch.sin(yaw), torch.cos(yaw)), dim=1),
+            "gps": torch.tensor(obs['pos']),
+        }
+        return Batch(**new_obs), obs['rgb'].transpose((0,2,3,1))
+    
+    def process_obs_prev(self, obs):
         raw_rgb = obs['rgb'].copy()
-        with torch.no_grad():
-            rgb_feat = self.get_features(raw_rgb)
+        # with torch.no_grad():
+        rgb_feat = self.get_features(raw_rgb)
 
         pitch = torch.deg2rad(torch.from_numpy(obs['pitch']))
         yaw = torch.deg2rad(torch.from_numpy(obs['yaw']))
@@ -364,6 +394,7 @@ class PPOagent:
         self.bf.rewards = rews
 
     def learn(self, last_obs, last_done, writer: SummaryWriter, global_step):
+        torch.autograd.set_detect_anomaly(True)
 
         self.shift_rewards()
         with torch.no_grad():
@@ -385,6 +416,8 @@ class PPOagent:
             for start in range(0, batch_size, minibatch_size):
                 end = start + minibatch_size
                 mb_inds = b_inds[start:end]
+                if end % 500 == 0:
+                    logging.info(f"Update [{epoch+1}/{self.cfg.agent.learning_epochs}] for minibatch: [{end}/{batch_size}]")
 
                 _, newlogprob, entropy, newvalue = self.policy_model.get_action_and_value(b_obss[mb_inds], b_actions.long()[mb_inds])
                 logratio = newlogprob - b_logprobs[mb_inds]
@@ -426,8 +459,8 @@ class PPOagent:
                 nn.utils.clip_grad_norm_(self.policy_model.parameters(), self.cfg.agent.max_grad_norm)
                 self.optimizer.step()
 
-            if approx_kl > self.cfg.agent.target_kl:
-                break
+            # if approx_kl > self.cfg.agent.target_kl:
+            #     break
 
         self.scheduler.step()
 
@@ -446,22 +479,47 @@ class PPOagent:
         print("SPS:", int(global_step / (time.time() - self.start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - self.start_time)), global_step)
 
-    def save_network(self, update):
+    def save_model(self, update):
         try:
+            import loralib as lora
             # Create the directory if it doesn't exist
             dirpath = f"{self.cfg.results_dir}/checkpoints"
             os.makedirs(dirpath, exist_ok=True)
-            filepath = os.path.join(dirpath, f"update_{update}.pth")
-            torch.save(self.policy_model.state_dict(), filepath)
-            logging.info(f"Saving model weights for update {update} in {filepath}.")
+            ppo_filepath = os.path.join(dirpath, f"ppo_update_{update}.pth")
+            torch.save({
+                'network_model': self.policy_model.network_model.state_dict(),
+                'actor': self.policy_model.actor.state_dict(),
+                'critic': self.policy_model.critic.state_dict(),
+            }, ppo_filepath)
+            logging.info(f"Saving ppo model weights for update {update} in {ppo_filepath}.")
+
+            if self.cfg.agent.train_image_model:
+                im_filepath = os.path.join(dirpath, f"im_update_{update}.pth")
+                torch.save(lora.lora_state_dict(self.policy_model.image_model), im_filepath)
+                logging.info(f"Saving image model weights for update {update} in {im_filepath}.")
+
         except Exception as e:
             print("Error occurred while saving model weights:", e)
 
-    def load_network(self, path):
+    def load_model(self, ppo_path, image_model_path):
         try:
-            self.policy_model.load_state_dict(torch.load(path))
-            logging.info(f"Loading model weights from {path}.")
+            checkpoint = torch.load(ppo_path, map_location='cpu')
+            self.policy_model.network_model.load_state_dict(checkpoint['network_model'])
+            self.policy_model.actor.load_state_dict(checkpoint['actor'])
+            self.policy_model.critic.load_state_dict(checkpoint['critic'])
+            logging.info(f"Loading ppo model weights from {ppo_path}.")
+
+            if self.cfg.agent.load_image_model:
+                self.policy_model.image_model.load_state_dict(torch.load(image_model_path), strict=False)
+                logging.info(f"Loading image model weights from {image_model_path}.")
+
         except Exception as e:
             print("Error occurred while loading model weights:", e)
 
-
+    def save_image_encoder(self, update):
+        import loralib as lora
+        dirpath = f"{self.cfg.results_dir}/checkpoints"
+        os.makedirs(dirpath, exist_ok=True)
+        filepath = os.path.join(dirpath, f"image_encoder_update_{update}.pth")
+        torch.save(lora.lora_state_dict(self.image_model), filepath)
+        logging.info(f"Saving image model weights for update {update} in {filepath}.")
