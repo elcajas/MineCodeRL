@@ -9,3 +9,8 @@ matplotlib
 torchvision
 gymnasium
 tensorboard
+
+loralib
+moviepy
+peft
+gdown
