@@ -50,24 +50,28 @@ mineclip:
   pool_type: "attn.d2.nh8.glusw"  # filled by variant
   resolution: [160, 256]
   ckpt:
-    path:  /home/kenjic/documents/MineDojo_PPO/weights/attn.pth # filled by users
+    path:  /home/kenjic/documents/weights/mineclip_weights/attn.pth # filled by user
     checksum: "b5ece9198337cfd117a3bfbd921e56da"
 
+groundingdino:
+  ckpt: /home/kenjic/documents/weights/gdino_weights/groundingdino_swint_ogc.pth # filled by user
+  setfile: /home/kenjic/documents/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py # filled by user
+
 env:
-  task: "combat spider"
-  num_envs: 2
+  task: "dummy env"
+  num_envs: 1
 
 agent:
-  total_timesteps: 60000
+  total_timesteps: 6000
   num_steps: 500
   num_minibatches: 50
   learning_epochs: 1
   clip_vloss: false
   return_norm: false
 
-  train_image_model: false
-  load_model: true
-  checkpoint_path: "/home/kenjic/documents/update_mineppo/combat_spider_08_05-11:10_vclip_rnorm_update_40.pth"
+  train_image_model: true
+  load_model: false
+  checkpoint_path: ""
   load_image_model: false
   image_checkpoint_path: ""
 
@@ -109,7 +113,7 @@ hyperparameters:
   demos_path: ""
   
   file_logging: true
-  wandb_init: true
+  wandb_init: false
 
 
 # hydra: 
