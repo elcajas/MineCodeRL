@@ -45,7 +45,7 @@ def set_gDINO(cfg, device):
         print_trainable_parameters(model)
     
     else:
-        model = load_model("../GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py", "../GroundingDINO/weights/groundingdino_swint_ogc.pth", device, train=cfg.agent.train_image_model)
+        model = load_model("../GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py", "../GroundingDINO/weights/groundingdino_swint_ogc.pth", device)
     return model
 
 def set_hf_gDINO(cfg, device):
