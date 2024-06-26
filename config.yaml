@@ -53,6 +53,10 @@ mineclip:
     path:  /home/kenjic/documents/MineDojo_PPO/weights/attn.pth # filled by users
     checksum: "b5ece9198337cfd117a3bfbd921e56da"
 
+groundingdino:
+  ckpt: /home/kenjic/documents/weights/gdino_weights/groundingdino_swint_ogc.pth # filled by user
+  setfile: /home/kenjic/documents/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py # filled by user
+
 env:
   task: "combat spider"
   num_envs: 2

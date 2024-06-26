@@ -40,12 +40,12 @@ def set_MineCLIP(cfg):
 
 def set_gDINO(cfg, device):
     if cfg.agent.train_image_model:
-        model = load_model_with_lora("../GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py", "../GroundingDINO/weights/groundingdino_swint_ogc.pth", device, rank=8, lora_alpha=2)
+        model = load_model_with_lora(cfg.groundingdino.setfile, cfg.groundingdino.ckpt, device, rank=8, lora_alpha=2)
         lora.mark_only_lora_as_trainable(model)
         print_trainable_parameters(model)
     
     else:
-        model = load_model("../GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py", "../GroundingDINO/weights/groundingdino_swint_ogc.pth", device, train=cfg.agent.train_image_model)
+        model = load_model(cfg.groundingdino.setfile, cfg.groundingdino.ckpt, device)
     return model
 
 def set_hf_gDINO(cfg, device):
