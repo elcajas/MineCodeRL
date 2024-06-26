@@ -2,7 +2,7 @@ feature_net_kwargs:
   rgb_feat:
     cls: DummyImgFeat
     output_dim: 512
-    image_model: mineclip # Image models: mineclip, gdino
+    image_model: gdino # Image models: mineclip, gdino, hf_gdino, image_encoder
   compass:
     cls: CompassMLP
     input_dim: 4
@@ -54,16 +54,23 @@ mineclip:
     checksum: "b5ece9198337cfd117a3bfbd921e56da"
 
 env:
-  task: "milk a cow"
-  num_envs: 4
+  task: "combat spider"
+  num_envs: 2
 
 agent:
-  total_timesteps: 8000
-  num_steps: 1000
-  num_minibatches: 1
+  total_timesteps: 60000
+  num_steps: 500
+  num_minibatches: 50
   learning_epochs: 1
   clip_vloss: false
   return_norm: false
+
+  train_image_model: false
+  load_model: true
+  checkpoint_path: "/home/kenjic/documents/update_mineppo/combat_spider_08_05-11:10_vclip_rnorm_update_40.pth"
+  load_image_model: false
+  image_checkpoint_path: ""
+
   gamma: 0.99
   gae_lambda: 0.95
   seed: 1
