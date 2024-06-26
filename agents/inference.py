@@ -5,6 +5,7 @@ import numpy as np
 import supervision as sv
 import torch
 from PIL import Image
+import torchvision
 from torchvision.ops import box_convert
 import bisect
 
@@ -15,6 +16,9 @@ from groundingdino.util.slconfig import SLConfig
 from groundingdino.util.utils import get_phrases_from_posmap
 
 from groundingdino.models import GroundingDINO
+
+import torch.nn as nn
+import loralib as lora
 
 # ----------------------------------------------------------------------------------------------------------------------
 # OLD API
@@ -27,16 +31,49 @@ def preprocess_caption(caption: str) -> str:
         return result
     return result + "."
 
+def replace_linear_layers_with_lora(model, r=4, lora_alpha=2, exceptions=[]):
+    for name, module in model.named_children():
+        if module in exceptions:
+            # Skip the modules in the exceptions list
+            continue
+        if isinstance(module, nn.Linear):
+            if 'qkv' in name:
+                #Replace the .qkv layer with lora.MergedLinear
+                lora_layer = lora.MergedLinear(module.in_features, module.out_features, r=r, lora_alpha=lora_alpha, enable_lora=[True, True, True])
+                setattr(model, name, lora_layer)
+            elif 'reduction' in name:
+                continue
+            else:
+                # Replace the nn.Linear layer with a LoRA layer
+                lora_layer = lora.Linear(module.in_features, module.out_features, r=r, lora_alpha=lora_alpha)
+                setattr(model, name, lora_layer)
+        else:
+            # Recursively apply to child modules
+            replace_linear_layers_with_lora(module, r, lora_alpha, exceptions)
 
 def load_model(model_config_path: str, model_checkpoint_path: str, device: str = "cuda"):
     args = SLConfig.fromfile(model_config_path)
     args.device = device
     model = build_model(args)
+
     checkpoint = torch.load(model_checkpoint_path, map_location="cpu")
     model.load_state_dict(clean_state_dict(checkpoint["model"]), strict=False)
-    model.eval()
-    return model.to(device)
+    # model.eval()
+    return model
 
+def load_model_with_lora(model_config_path: str, model_checkpoint_path: str, device: str = "cuda", rank: int = 8, lora_alpha: int = 8):
+    args = SLConfig.fromfile(model_config_path)
+    args.device = device
+    model = build_model(args)
+
+    replace_linear_layers_with_lora(model.backbone, r=rank, lora_alpha=lora_alpha)
+    replace_linear_layers_with_lora(model.transformer.encoder.layers, r=rank, lora_alpha=lora_alpha)
+    replace_linear_layers_with_lora(model.transformer.encoder.fusion_layers, r=rank, lora_alpha=lora_alpha)
+
+    checkpoint = torch.load(model_checkpoint_path, map_location="cpu")
+    model.load_state_dict(clean_state_dict(checkpoint["model"]), strict=False)
+    # model.eval()
+    return model
 
 def load_image(image_path: str) -> Tuple[np.array, torch.Tensor]:
     transform = T.Compose(
@@ -51,26 +88,46 @@ def load_image(image_path: str) -> Tuple[np.array, torch.Tensor]:
     image_transformed, _ = transform(image_source, None)
     return image, image_transformed
 
+def process_image(image:np.ndarray):
+    transform = T.Compose(
+        [
+            T.RandomResize([800], max_size=1333),
+            T.ToTensor(),
+            T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        ]
+    )
+    img_array = image.transpose(1,2,0).astype(np.uint8)
+    img = Image.fromarray(img_array)
+    img_transformed, _ = transform(img, None)
+    return img_transformed
+
+def preprocess_images(images: np.ndarray):
+    transformed = [process_image(image) for image in images]
+    return torch.stack(transformed, dim=0)
 
 def predict(
         model,
-        image: torch.Tensor,
+        images: torch.Tensor,
         caption: str,
         box_threshold: float,
         text_threshold: float,
         device: str = "cuda",
-        remove_combined: bool = False
+        remove_combined: bool = False,
+        train: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor, List[str]]:
     caption = preprocess_caption(caption=caption)
+    images = preprocess_images(images)
+    images = images.to(device)
 
-    image = image.to(device)
-
-    with torch.no_grad():
-        outputs = model(image[None], captions=[caption])
+    if train:
+        outputs = model(images, captions=[caption]*len(images))
+    else:
+        with torch.no_grad():
+            outputs = model(images, captions=[caption]*len(images))
 
     # prediction_logits = outputs["pred_logits"].cpu().sigmoid()[0]  # prediction_logits.shape = (nq, 256)
     # prediction_boxes = outputs["pred_boxes"].cpu()[0]  # prediction_boxes.shape = (nq, 4)
-    interm_features = outputs["interm_feat"].cpu()
+    interm_features = outputs["interm_feat"]
 
     # mask = prediction_logits.max(dim=1)[0] > box_threshold
     # logits = prediction_logits[mask]  # logits.shape = (n, 256)
