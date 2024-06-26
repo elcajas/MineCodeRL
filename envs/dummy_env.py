@@ -71,5 +71,5 @@ if __name__ == "__main__":
         attack_reward=1,
         success_reward=1
     )
-    import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
     env.show_episode()
