@@ -13,11 +13,11 @@ class DummyImgFeat(nn.Module):
         self._output_dim = output_dim
         self._device = device
 
-        if image_model == 'mineclip':
-            self._mlp = nn.Identity()
-            self._output_dim = 512
+        # if image_model == 'mineclip':
+        #     self._mlp = nn.Identity()
+        #     self._output_dim = 512
         
-        else:
+        if image_model == 'gdino' or image_model == 'hf_gdino':
             _mlp = build_mlp(
                 input_dim=900,
                 hidden_dim=128,
@@ -32,6 +32,10 @@ class DummyImgFeat(nn.Module):
                 nn.Linear(in_features=32, out_features=2),
                 nn.Flatten()
             )
+            self._output_dim = 512
+        
+        else: 
+            self._mlp = nn.Identity()
             self._output_dim = 512
     @property
     def output_dim(self):

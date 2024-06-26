@@ -4,8 +4,9 @@ import torch
 import torch.nn as nn
 
 from mineclip.mineagent.batch import Batch
-from mineclip.utils import build_mlp, call_once
-
+# from mineclip.utils import build_mlp, call_once
+from mineclip.utils import call_once
+from ..utils import build_mlp
 
 class SimpleFeatureFusion(nn.Module):
     def __init__(

@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 
-from mineclip.utils import build_mlp
+# from mineclip.utils import build_mlp
+from ..utils import build_mlp
 import mineclip.utils as U
 
 
