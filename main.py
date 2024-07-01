@@ -10,7 +10,7 @@ from omegaconf import OmegaConf
 
 from mineclip.mineagent.batch import Batch
 from envs.utils import make_env
-from agents import PPOagent
+from agents.only_ppo_model import PPOagent
 
 def main(cfg):
     dname = f"{cfg.env.task.replace(' ', '_')}_{datetime.now().strftime('%d_%m-%H:%M')}"
@@ -26,7 +26,7 @@ def main(cfg):
     cfg.agent.tsk = cfg.env.task
 
     wandb.init(
-        project="testupd",
+        project="only_ppo",
         entity=None,
         sync_tensorboard=True,
         config=dict(cfg.agent),
@@ -65,7 +65,7 @@ def main(cfg):
     initial_update = 0
 
     obs, _ = envs.reset()
-    obs, frame = agent.process_obs(obs)
+    obs, frame = agent.process_obs_prev(obs)
     next_done = torch.zeros(num_envs)
 
     for update in range(initial_update, initial_update + num_updates):
@@ -76,7 +76,7 @@ def main(cfg):
             next_obs, reward, done, _, info = envs.step(action.cpu().numpy())
             agent.store_experience(obs, action, logprob, torch.tensor(reward), next_done, val.squeeze(), frame)
 
-            obs, frame = agent.process_obs(next_obs)
+            obs, frame = agent.process_obs_prev(next_obs)
             next_done = torch.Tensor(done).to(device)
 
             if "final_info" in info:
