@@ -113,17 +113,13 @@ def predict(
         text_threshold: float,
         device: str = "cuda",
         remove_combined: bool = False,
-        train: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor, List[str]]:
+    
     caption = preprocess_caption(caption=caption)
     images = preprocess_images(images)
     images = images.to(device)
 
-    if train:
-        outputs = model(images, captions=[caption]*len(images))
-    else:
-        with torch.no_grad():
-            outputs = model(images, captions=[caption]*len(images))
+    outputs = model(images, captions=[caption]*len(images))
 
     # prediction_logits = outputs["pred_logits"].cpu().sigmoid()[0]  # prediction_logits.shape = (nq, 256)
     # prediction_boxes = outputs["pred_boxes"].cpu()[0]  # prediction_boxes.shape = (nq, 4)

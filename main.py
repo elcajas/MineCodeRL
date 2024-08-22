@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 from datetime import datetime
 import torch
@@ -13,31 +14,36 @@ from envs.utils import make_env
 from agents import PPOagent
 
 def main(cfg):
-    dname = f"{cfg.env.task.replace(' ', '_')}_{datetime.now().strftime('%d_%m-%H:%M')}"
+    dname = f"{cfg.env.task.replace(' ', '_')}_{datetime.now().strftime('%m_%d-%H:%M')}"
     if cfg.agent.clip_vloss:
         dname = dname + "_vclip"
     if cfg.agent.return_norm:
         dname = dname + "_rnorm"
 
-    results_dir = f"results/{dname}"
-
-    cfg.results_dir = results_dir
+    
     cfg.agent.n_envs = cfg.env.num_envs
     cfg.agent.tsk = cfg.env.task
+    cfg.agent.image_model = cfg.feature_net_kwargs.rgb_feat.image_model
 
+    suf_add = f'only-ppo_{cfg.feature_net_kwargs.rgb_feat.image_model}'
+    if cfg.agent.train_image_model: suf_add = f'ppo-imgenc_{cfg.feature_net_kwargs.rgb_feat.image_model}'
     wandb.init(
-        project="testupd",
+        project=f"beryllium_{suf_add}", # Change project name 
         entity=None,
         sync_tensorboard=True,
         config=dict(cfg.agent),
         name=dname,
     )
 
+    results_dir = f"results/{suf_add}/{dname}"
+    cfg.results_dir = results_dir
+
     writer = SummaryWriter(results_dir)
     writer.add_text(
         "hyperparameters",
         "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in cfg.agent.items()])),
     )
+    sys.stderr = open(results_dir+'/err.e', 'w')
 
     log_file = f"{cfg.results_dir}/output.log"
     logging.basicConfig(
@@ -47,7 +53,7 @@ def main(cfg):
         filemode='w'
     )
     
-    torch.cuda.set_device(1)
+    torch.cuda.set_device(2)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     num_envs = cfg.env.num_envs

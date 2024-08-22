@@ -34,13 +34,27 @@ class PPOBuffer:
         self.env = env
         capacity = cfg.agent.num_steps
         num_envs = cfg.env.num_envs
+        
+        if not cfg.agent.train_image_model:
 
-        obss = {
-            "rgb_feat": torch.zeros((capacity, num_envs, 3, 160, 256)).to(device),      # 512, (256, 900), (3, 160, 256)
-            "compass": torch.zeros((capacity, num_envs, 4)).to(device),
-            "gps": torch.zeros((capacity, num_envs, 3)).to(device),
-            # "biome_id": torch.zeros((num_steps, num_envs, 1)),
-        }
+            # set feature dimension depending on image model (mineclip: 512, gdino: (256, 900))
+            feat_dim = 512
+            if cfg.feature_net_kwargs.rgb_feat.image_model == 'gdino': feat_dim = (256, 900)
+
+            obss = {
+                "rgb_feat": torch.zeros((capacity, num_envs, *(feat_dim))).to(device),      # 512, (256, 900) from features
+                "compass": torch.zeros((capacity, num_envs, 4)).to(device),
+                "gps": torch.zeros((capacity, num_envs, 3)).to(device),
+                # "biome_id": torch.zeros((num_steps, num_envs, 1)),
+            }
+        else:
+            obss = {
+                "rgb_feat": torch.zeros((capacity, num_envs, 3, 160, 256)).to(device),      # from pixels
+                "compass": torch.zeros((capacity, num_envs, 4)).to(device),
+                "gps": torch.zeros((capacity, num_envs, 3)).to(device),
+                # "biome_id": torch.zeros((num_steps, num_envs, 1)),
+            }
+        
         self.obss = Batch(**obss)
         self.actions = torch.zeros((capacity, num_envs) + env.single_action_space.shape).to(device)
         self.logprobs = torch.zeros((capacity, num_envs)).to(device)
@@ -266,6 +280,7 @@ class PolicyNetwork(nn.Module):
         
         if self.cfg.feature_net_kwargs.rgb_feat.image_model == "gdino":
             TEXT_PROMPT = "spider . cow . sky . animal . tree ."
+
             logits = predict(
                 model=self.image_model,
                 images=images.cpu().numpy(),
@@ -273,10 +288,9 @@ class PolicyNetwork(nn.Module):
                 box_threshold=BOX_TRESHOLD,
                 text_threshold=TEXT_TRESHOLD,
                 device=self.device,
-                train=self.cfg.agent.train_image_model,
             )
-
             return logits
+        
         else:
             TEXT_PROMPT = "spider . cow . sky . animal . tree ."
             inputs = self.processor(images=images, text=[TEXT_PROMPT]*len(images), return_tensors="pt").to(self.device)
@@ -287,7 +301,9 @@ class PolicyNetwork(nn.Module):
 
     
     def get_action_and_value(self, batch, action=None):
-        img_feat = self.get_features(batch.rgb_feat)
+        img_feat = batch.rgb_feat
+        if self.cfg.agent.train_image_model: img_feat = self.get_features(batch.rgb_feat)
+        
         hidden, _ = self.network_model(Batch(rgb_feat=img_feat, compass=batch.compass, gps=batch.gps))
         logits, _ = self.actor(hidden)
         value, _ = self.critic(hidden)
@@ -301,10 +317,13 @@ class PolicyNetwork(nn.Module):
         return action, logprob, entropy, value
     
     def get_value(self, batch):
-        img_feat = self.get_features(batch.rgb_feat)
+        img_feat = batch.rgb_feat
+        if self.cfg.agent.train_image_model: img_feat = self.get_features(batch.rgb_feat)
+
         hidden, _ = self.network_model(Batch(rgb_feat=img_feat, compass=batch.compass, gps=batch.gps))
         value, _ = self.critic(hidden)
         return value
+    
 class PPOagent:
     def __init__(self, env, cfg, device) -> None:
 
@@ -330,14 +349,30 @@ class PPOagent:
         self.bf.store(*args)
         
     def process_obs(self, obs):
-        pitch = torch.deg2rad(torch.from_numpy(obs['pitch']))
-        yaw = torch.deg2rad(torch.from_numpy(obs['yaw']))
-        new_obs = {
-            "rgb_feat": torch.tensor(obs['rgb']),
-            "compass": torch.cat((torch.sin(pitch), torch.cos(pitch), torch.sin(yaw), torch.cos(yaw)), dim=1),
-            "gps": torch.tensor(obs['pos']),
-        }
-        return Batch(**new_obs), obs['rgb'].transpose((0,2,3,1))
+        if not self.cfg.agent.train_image_model:
+            raw_rgb = obs['rgb'].copy()
+            with torch.no_grad():
+                rgb_feat = self.policy_model.get_features(torch.tensor(raw_rgb))            # later check if with torch.no_grad() is required
+
+            pitch = torch.deg2rad(torch.from_numpy(obs['pitch']))
+            yaw = torch.deg2rad(torch.from_numpy(obs['yaw']))
+            new_obs = {
+                "rgb_feat": rgb_feat,
+                "compass": torch.cat((torch.sin(pitch), torch.cos(pitch), torch.sin(yaw), torch.cos(yaw)), dim=1),
+                "gps": torch.tensor(obs['pos']),
+                # "biome_id": torch.tensor(obs['biome_id']).unsqueeze(dim=1),
+            }
+            return Batch(**new_obs), obs['rgb'].transpose((0,2,3,1))
+        
+        else:
+            pitch = torch.deg2rad(torch.from_numpy(obs['pitch']))
+            yaw = torch.deg2rad(torch.from_numpy(obs['yaw']))
+            new_obs = {
+                "rgb_feat": torch.tensor(obs['rgb']),
+                "compass": torch.cat((torch.sin(pitch), torch.cos(pitch), torch.sin(yaw), torch.cos(yaw)), dim=1),
+                "gps": torch.tensor(obs['pos']),
+            }
+            return Batch(**new_obs), obs['rgb'].transpose((0,2,3,1))
     
     def process_obs_prev(self, obs):
         raw_rgb = obs['rgb'].copy()
