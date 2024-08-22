@@ -50,12 +50,12 @@ mineclip:
   pool_type: "attn.d2.nh8.glusw"  # filled by variant
   resolution: [160, 256]
   ckpt:
-    path:  /home/kenjic/documents/MinedojoPPO/weights/mineclip_weights/attn.pth # filled by user
+    path:  /home/kenjic/documents/weights/mineclip_weights/attn.pth # filled by user
     checksum: "b5ece9198337cfd117a3bfbd921e56da"
 
 groundingdino:
-  ckpt: /home/kenjic/documents/MinedojoPPO/weights/gdino_weights/groundingdino_swint_ogc.pth # filled by user
-  setfile: /home/kenjic/documents/MinedojoPPO/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py # filled by user
+  ckpt: /home/kenjic/documents/weights/gdino_weights/groundingdino_swint_ogc.pth # filled by user
+  setfile: /home/kenjic/documents/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py # filled by user
 
 env:
   task: "dummy env"
