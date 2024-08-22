@@ -9,7 +9,7 @@ import torch.nn as nn
 from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
-from torch.cuda.amp import autocast
+from torch.cuda.amp import GradScaler, autocast
 
 from mineclip import MineCLIP
 from mineclip import SimpleFeatureFusion
@@ -255,36 +255,39 @@ class PolicyNetwork(nn.Module):
         BOX_TRESHOLD = 0.35
         TEXT_TRESHOLD = 0.25
         
-        if isinstance(self.image_model, MineCLIP):
-            return self.image_model.forward_image_features(images.to(self.device))
-        
-        if isinstance(self.image_model, ImageEncoder):
-            return self.image_model(images.to(self.device))
-        
-        if self.cfg.feature_net_kwargs.rgb_feat.image_model == "gdino":
-            TEXT_PROMPT = "spider . cow . sky . animal . tree ."
-            logits = predict(
-                model=self.image_model,
-                images=images.cpu().numpy(),
-                caption=TEXT_PROMPT,
-                box_threshold=BOX_TRESHOLD,
-                text_threshold=TEXT_TRESHOLD,
-                device=self.device,
-                train=self.cfg.agent.train_image_model,
-            )
+        with autocast():
+            if isinstance(self.image_model, MineCLIP):
+                return self.image_model.forward_image_features(images.to(self.device))
+            
+            if isinstance(self.image_model, ImageEncoder):
+                return self.image_model(images.to(self.device))
+            
+            if self.cfg.feature_net_kwargs.rgb_feat.image_model == "gdino":
+                TEXT_PROMPT = "spider . cow . sky . animal . tree ."
+                logits = predict(
+                    model=self.image_model,
+                    images=images.cpu().numpy(),
+                    caption=TEXT_PROMPT,
+                    box_threshold=BOX_TRESHOLD,
+                    text_threshold=TEXT_TRESHOLD,
+                    device=self.device,
+                    train=self.cfg.agent.train_image_model,
+                )
 
-            return logits
-        else:
-            TEXT_PROMPT = "spider . cow . sky . animal . tree ."
-            inputs = self.processor(images=images, text=[TEXT_PROMPT]*len(images), return_tensors="pt").to(self.device)
-            # with torch.no_grad():
-            outputs = self.image_model(**inputs, output_hidden_states=True)
-            logits = outputs.decoder_hidden_states[1].transpose(-1,-2)
-            return logits
+                return logits
+            else:
+                # TEXT_PROMPT = "zombie . sky . moob . tree ."
+                TEXT_PROMPT = "spider . sky . moob . tree ."
+                inputs = self.processor(images=images, text=[TEXT_PROMPT]*len(images), return_tensors="pt").to(self.device)
+                # with torch.no_grad():
+                outputs = self.image_model(**inputs, output_hidden_states=True)
+                logits = outputs.decoder_hidden_states[1].transpose(-1,-2)
+                return logits
 
     
     def get_action_and_value(self, batch, action=None):
         # img_feat = self.get_features(batch.rgb_feat)
+
         img_feat = batch.rgb_feat
         hidden, _ = self.network_model(Batch(rgb_feat=img_feat, compass=batch.compass, gps=batch.gps))
         logits, _ = self.actor(hidden)
@@ -300,6 +303,7 @@ class PolicyNetwork(nn.Module):
     
     def get_value(self, batch):
         # img_feat = self.get_features(batch.rgb_feat)
+
         img_feat = batch.rgb_feat
         hidden, _ = self.network_model(Batch(rgb_feat=img_feat, compass=batch.compass, gps=batch.gps))
         value, _ = self.critic(hidden)
@@ -316,6 +320,8 @@ class PPOagent:
 
         self.optimizer = Adam(self.policy_model.parameters(), lr = cfg.agent.learning_rate)
         self.scheduler = CosineAnnealingLR(self.optimizer, T_max=num_updates, eta_min=cfg.agent.min_lr)
+        self.scaler = GradScaler()
+
         self.env = env
         self.cfg = cfg
         self.device = device
@@ -394,7 +400,7 @@ class PPOagent:
 
     def learn(self, last_obs, last_done, writer: SummaryWriter, global_step):
         torch.autograd.set_detect_anomaly(True)
-
+    
         self.shift_rewards()
         with torch.no_grad():
             last_value = self.policy_model.get_value(last_obs).reshape(1, -1)
@@ -417,46 +423,52 @@ class PPOagent:
                 mb_inds = b_inds[start:end]
                 if end % 500 == 0:
                     logging.info(f"Update [{epoch+1}/{self.cfg.agent.learning_epochs}] for minibatch: [{end}/{batch_size}]")
-
+                
                 _, newlogprob, entropy, newvalue = self.policy_model.get_action_and_value(b_obss[mb_inds], b_actions.long()[mb_inds])
+                # with autocast():
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 
-                with torch.no_grad():
-                    # calculate approx_kl http://joschu.net/blog/kl-approx.html
-                    old_approx_kl = (-logratio).mean()
-                    approx_kl = ((ratio - 1) - logratio).mean()
-                    clipfracs += [((ratio - 1.0).abs() > self.cfg.agent.clip_coef).float().mean().item()]
-                
-                mb_advantages = b_advantages[mb_inds]
-                mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
+                with autocast():
+                    with torch.no_grad():
+                        # calculate approx_kl http://joschu.net/blog/kl-approx.html
+                        old_approx_kl = (-logratio).mean()
+                        approx_kl = ((ratio - 1) - logratio).mean()
+                        clipfracs += [((ratio - 1.0).abs() > self.cfg.agent.clip_coef).float().mean().item()]
+                    
+                    mb_advantages = b_advantages[mb_inds]
+                    mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
 
-                # Policy loss
-                pg_loss1 = -mb_advantages * ratio
-                pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - self.cfg.agent.clip_coef, 1 + self.cfg.agent.clip_coef)
-                pg_loss = torch.max(pg_loss1, pg_loss2).mean()
+                    # Policy loss
+                    pg_loss1 = -mb_advantages * ratio
+                    pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - self.cfg.agent.clip_coef, 1 + self.cfg.agent.clip_coef)
+                    pg_loss = torch.max(pg_loss1, pg_loss2).mean()
 
-                # Value loss
-                newvalue = newvalue.view(-1)
-                mb_returns = b_returns[mb_inds]
-                if self.cfg.agent.return_norm:
-                    mb_returns = (mb_returns - mb_returns.mean()) / (mb_returns.std() + 1e-8)
-                if self.cfg.agent.clip_vloss:
-                    v_loss_unclipped = (newvalue - mb_returns) ** 2
-                    v_clipped = b_values[mb_inds] + torch.clamp(newvalue - b_values[mb_inds], -self.cfg.agent.clip_coef, self.cfg.agent.clip_coef)
-                    v_loss_clipped = (v_clipped - mb_returns) ** 2
-                    v_loss_max = torch.max(v_loss_unclipped, v_loss_clipped)
-                    v_loss = 0.5 * v_loss_max.mean()
-                else:
-                    v_loss = 0.5 * ((newvalue - mb_returns) ** 2).mean()
-                
-                entropy_loss = entropy.mean()
-                loss = pg_loss - self.cfg.agent.ent_coef * entropy_loss +  self.cfg.agent.vf_coef * v_loss
+                    # Value loss
+                    newvalue = newvalue.view(-1)
+                    mb_returns = b_returns[mb_inds]
+                    if self.cfg.agent.return_norm:
+                        mb_returns = (mb_returns - mb_returns.mean()) / (mb_returns.std() + 1e-8)
+                    if self.cfg.agent.clip_vloss:
+                        v_loss_unclipped = (newvalue - mb_returns) ** 2
+                        v_clipped = b_values[mb_inds] + torch.clamp(newvalue - b_values[mb_inds], -self.cfg.agent.clip_coef, self.cfg.agent.clip_coef)
+                        v_loss_clipped = (v_clipped - mb_returns) ** 2
+                        v_loss_max = torch.max(v_loss_unclipped, v_loss_clipped)
+                        v_loss = 0.5 * v_loss_max.mean()
+                    else:
+                        v_loss = 0.5 * ((newvalue - mb_returns) ** 2).mean()
+                    
+                    entropy_loss = entropy.mean()
+                    loss = pg_loss - self.cfg.agent.ent_coef * entropy_loss +  self.cfg.agent.vf_coef * v_loss
 
                 self.optimizer.zero_grad()
-                loss.backward()
+                self.scaler.scale(loss).backward()
+                # loss.backward()
+                self.scaler.unscale_(self.optimizer)
                 nn.utils.clip_grad_norm_(self.policy_model.parameters(), self.cfg.agent.max_grad_norm)
-                self.optimizer.step()
+                self.scaler.step(self.optimizer)
+                # self.optimizer.step()
+                self.scaler.update()
 
             # if approx_kl > self.cfg.agent.target_kl:
             #     break
