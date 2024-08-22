@@ -11,7 +11,7 @@ from omegaconf import OmegaConf
 
 from mineclip.mineagent.batch import Batch
 from envs.utils import make_env
-from agents.only_ppo_model import PPOagent
+from agents.ppo_model import PPOagent
 
 def main(cfg):
     dname = f"{cfg.env.task.replace(' ', '_')}_{datetime.now().strftime('%m_%d-%H:%M')}"
@@ -27,8 +27,9 @@ def main(cfg):
 
     suf_add = f'only-ppo_{cfg.feature_net_kwargs.rgb_feat.image_model}'
     if cfg.agent.train_image_model: suf_add = f'ppo-imgenc_{cfg.feature_net_kwargs.rgb_feat.image_model}'
+    
     wandb.init(
-        project=f"beryllium_{suf_add}", # Change project name 
+        project=f"spica_{suf_add}", # Change project name 
         entity=None,
         sync_tensorboard=True,
         config=dict(cfg.agent),

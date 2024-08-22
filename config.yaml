@@ -62,15 +62,15 @@ env:
   num_envs: 2
 
 agent:
-  total_timesteps: 450000
-  num_steps: 1500
-  num_minibatches: 100
-  learning_epochs: 1
+  total_timesteps: 800000
+  num_steps: 10000
+  num_minibatches: 4
+  learning_epochs: 16
   clip_vloss: true
-  return_norm: false
+  return_norm: true
 
-  train_image_model: true
-  load_model: true
+  train_image_model: false
+  load_model: false
   checkpoint_path: "/home/kenjic/documents/update_mineppo/combat_spider_08_05-11:10_vclip_rnorm_update_40.pth"
   load_image_model: false
   image_checkpoint_path: ""
@@ -79,7 +79,7 @@ agent:
   gae_lambda: 0.95
   seed: 1
   clip_coef: 0.2
-  learning_rate: !!float 1e-5 #1e-4
+  learning_rate: !!float 1e-4 #1e-5
   min_lr: !!float 1e-6
   ent_coef: 0.005
   vf_coef: 0.5
@@ -99,21 +99,21 @@ si_buffer:
   buffer_delta: 0
 
 hyperparameters:
-  task: "combat spider"
+  task: ""
   epochs: 20
   batch_size: 5000
 
   video_min_rew: 32
 
   load_checkpoint: false
-  checkpoint_dir: "/home/user/Mine/results/run_231109_0814/weights"
+  checkpoint_dir: ""
   checkpoint_epoch: 0
 
   imitation_learning: false
   demos_path: ""
   
   file_logging: true
-  wandb_init: true
+  wandb_init: false
 
 
 # hydra: 

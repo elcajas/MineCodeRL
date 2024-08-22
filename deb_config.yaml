@@ -59,7 +59,7 @@ groundingdino:
 
 env:
   task: "dummy env"
-  num_envs: 1
+  num_envs: 2
 
 agent:
   total_timesteps: 6000
@@ -69,7 +69,7 @@ agent:
   clip_vloss: false
   return_norm: false
 
-  train_image_model: true
+  train_image_model: false
   load_model: false
   checkpoint_path: ""
   load_image_model: false
@@ -99,7 +99,7 @@ si_buffer:
   buffer_delta: 0
 
 hyperparameters:
-  task: "milk a cow"
+  task: ""
   epochs: 20
   batch_size: 5000
 

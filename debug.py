@@ -36,6 +36,7 @@ def main(cfg):
         "hyperparameters",
         "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in cfg.agent.items()])),
     )
+    sys.stderr = open(results_dir+'/err.e', 'w')
 
     log_file = f"{cfg.results_dir}/output.log"
     logging.basicConfig(
@@ -70,7 +71,7 @@ def main(cfg):
     for update in range(initial_update, initial_update + num_updates):
         for step in range(num_steps):
             global_step += 1 * num_envs
-            print(global_step)
+            # print(global_step)
             action, logprob, _, val = agent.select_action(obs)
             next_obs, reward, done, _, info = envs.step(action.cpu().numpy())
             agent.store_experience(obs, action, logprob, torch.tensor(reward), next_done, val.squeeze(), frame)
@@ -89,7 +90,7 @@ def main(cfg):
                         writer.add_scalar("charts/episodic_length", ep_len, global_step)
 
         agent.learn(last_obs=obs, last_done=next_done, writer=writer, global_step=global_step)
-        agent.save_model(update+1)
+        # agent.save_model(update+1)
 
     envs.close()
     writer.close()
