@@ -54,15 +54,15 @@ def main(cfg):
         filemode='w'
     )
     
-    torch.cuda.set_device(2)
+    torch.cuda.set_device(1)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     num_envs = cfg.env.num_envs
     envs = gym.vector.AsyncVectorEnv([make_env(cfg.env.task, cfg.agent.seed + i, idx, results_dir) for idx, i in enumerate(range(num_envs))])
     agent = PPOagent(envs, cfg, device)
 
-    if cfg.agent.load_model:
-        agent.load_model(cfg.agent.checkpoint_path, cfg.agent.image_checkpoint_path)
+    if cfg.agent.load_ppo_model:
+        agent.load_model(cfg.agent.ppo_checkpoint_path, cfg.agent.image_checkpoint_path)
 
     num_steps = cfg.agent.num_steps
     batch_size = int(num_steps * num_envs)

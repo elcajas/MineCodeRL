@@ -35,25 +35,19 @@ class PPOBuffer:
         capacity = cfg.agent.num_steps
         num_envs = cfg.env.num_envs
         
-        if not cfg.agent.train_image_model:
+        # set feature dimension depending on image model (mineclip: 512, gdino: (256, 900))
+        # If train grounding dino, rgb pixel dimension is used (3,160,256)
 
-            # set feature dimension depending on image model (mineclip: 512, gdino: (256, 900))
-            feat_dim = 512
-            if cfg.feature_net_kwargs.rgb_feat.image_model == 'gdino': feat_dim = (256, 900)
-
-            obss = {
-                "rgb_feat": torch.zeros((capacity, num_envs, *(feat_dim))).to(device),      # 512, (256, 900) from features
-                "compass": torch.zeros((capacity, num_envs, 4)).to(device),
-                "gps": torch.zeros((capacity, num_envs, 3)).to(device),
-                # "biome_id": torch.zeros((num_steps, num_envs, 1)),
-            }
-        else:
-            obss = {
-                "rgb_feat": torch.zeros((capacity, num_envs, 3, 160, 256)).to(device),      # from pixels
-                "compass": torch.zeros((capacity, num_envs, 4)).to(device),
-                "gps": torch.zeros((capacity, num_envs, 3)).to(device),
-                # "biome_id": torch.zeros((num_steps, num_envs, 1)),
-            }
+        feat_dim = [512]
+        if cfg.feature_net_kwargs.rgb_feat.image_model == 'gdino': feat_dim = [256, 900]
+        if cfg.agent.train_image_model: feat_dim = [3, 160, 256]
+        
+        obss = {
+            "rgb_feat": torch.zeros((capacity, num_envs, *(feat_dim))).to(device),      
+            "compass": torch.zeros((capacity, num_envs, 4)).to(device),
+            "gps": torch.zeros((capacity, num_envs, 3)).to(device),
+            # "biome_id": torch.zeros((num_steps, num_envs, 1)),
+        }
         
         self.obss = Batch(**obss)
         self.actions = torch.zeros((capacity, num_envs) + env.single_action_space.shape).to(device)

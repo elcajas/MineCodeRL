@@ -70,8 +70,8 @@ agent:
   return_norm: false
 
   train_image_model: false
-  load_model: false
-  checkpoint_path: ""
+  load_ppo_model: false
+  ppo_checkpoint_path: ""
   load_image_model: false
   image_checkpoint_path: ""
 
