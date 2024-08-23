@@ -75,6 +75,8 @@ agent:
   load_image_model: false
   image_checkpoint_path: ""
 
+  autocast_flag: true
+
   gamma: 0.99
   gae_lambda: 0.95
   seed: 1

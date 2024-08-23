@@ -11,7 +11,7 @@ from omegaconf import OmegaConf
 
 from mineclip.mineagent.batch import Batch
 from envs.utils import make_env
-from agents.only_ppo_model import PPOagent
+from agents.ppo_model import PPOagent
 
 def main(cfg):
     dname = f"{cfg.env.task.replace(' ', '_')}_{datetime.now().strftime('%m_%d-%H:%M')}"
@@ -64,7 +64,7 @@ def main(cfg):
     initial_update = 0
 
     obs, _ = envs.reset()
-    obs, frame = agent.process_obs_prev(obs)
+    obs, frame = agent.process_obs(obs)
     next_done = torch.zeros(num_envs)
     # agent.save_model(update=0)
 
@@ -76,7 +76,7 @@ def main(cfg):
             next_obs, reward, done, _, info = envs.step(action.cpu().numpy())
             agent.store_experience(obs, action, logprob, torch.tensor(reward), next_done, val.squeeze(), frame)
 
-            obs, frame = agent.process_obs_prev(next_obs)
+            obs, frame = agent.process_obs(next_obs)
             next_done = torch.Tensor(done).to(device)
 
             if "final_info" in info:
@@ -145,7 +145,7 @@ def eval(cfg):
     initial_update = 0
 
     obs, _ = envs.reset()
-    obs, frame = agent.process_obs_prev(obs)
+    obs, frame = agent.process_obs(obs)
     next_done = torch.zeros(num_envs)
     # agent.save_model(update=0)
 
@@ -157,7 +157,7 @@ def eval(cfg):
             next_obs, reward, done, _, info = envs.step(action.cpu().numpy())
             agent.store_experience(obs, action, logprob, torch.tensor(reward), next_done, val.squeeze(), frame)
 
-            obs, frame = agent.process_obs_prev(next_obs)
+            obs, frame = agent.process_obs(next_obs)
             next_done = torch.Tensor(done).to(device)
 
             if "final_info" in info:
