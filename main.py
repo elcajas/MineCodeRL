@@ -20,7 +20,6 @@ def main(cfg):
     if cfg.agent.return_norm:
         dname = dname + "_rnorm"
 
-    
     cfg.agent.n_envs = cfg.env.num_envs
     cfg.agent.tsk = cfg.env.task
     cfg.agent.image_model = cfg.feature_net_kwargs.rgb_feat.image_model

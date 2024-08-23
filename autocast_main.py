@@ -20,8 +20,9 @@ def main(cfg):
         dname = dname + "_vclip"
     if cfg.agent.return_norm:
         dname = dname + "_rnorm"
+    if cfg.agent.autocast_flag:
+        dname = dname + '_autocast'
 
-    
     cfg.agent.n_envs = cfg.env.num_envs
     cfg.agent.tsk = cfg.env.task
     cfg.agent.image_model = cfg.feature_net_kwargs.rgb_feat.image_model
@@ -29,15 +30,15 @@ def main(cfg):
     suf_add = f'only-ppo_{cfg.feature_net_kwargs.rgb_feat.image_model}'
     if cfg.agent.train_image_model: suf_add = f'ppo-imgenc_{cfg.feature_net_kwargs.rgb_feat.image_model}'
     
-    # wandb.init(
-    #     project=f"spica_{suf_add}", # Change project name 
-    #     entity=None,
-    #     sync_tensorboard=True,
-    #     config=dict(cfg.agent),
-    #     name=dname,
-    # )
+    wandb.init(
+        project=f"beryllium_{suf_add}",             # Change project name
+        entity=None,
+        sync_tensorboard=True,
+        config=dict(cfg.agent),
+        name=dname,
+    )
 
-    results_dir = f"debug_results/{suf_add}/{dname}"
+    results_dir = f"results/{suf_add}/{dname}"
     cfg.results_dir = results_dir
 
     writer = SummaryWriter(results_dir)
@@ -55,7 +56,7 @@ def main(cfg):
         filemode='w'
     )
     
-    torch.cuda.set_device(0)
+    torch.cuda.set_device(2)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     num_envs = cfg.env.num_envs
@@ -109,8 +110,9 @@ def main(cfg):
     writer.close()
 
 if __name__ == "__main__":
+
     dir_path = pathlib.Path(__file__).parent.resolve()
-    with open(dir_path.joinpath("deb_config.yaml"), "r") as f:    # Change config file, conf_local.yaml
+    with open(dir_path.joinpath("config.yaml"), "r") as f:    # Change config file, conf_local.yaml
         cfg = yaml.safe_load(f)
     cfg = OmegaConf.create(cfg)
 
