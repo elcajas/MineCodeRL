@@ -24,7 +24,6 @@ import loralib as lora
 # OLD API
 # ----------------------------------------------------------------------------------------------------------------------
 
-
 def preprocess_caption(caption: str) -> str:
     result = caption.lower().strip()
     if result.endswith("."):

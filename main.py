@@ -1,15 +1,14 @@
 import sys
-import numpy as np
 from datetime import datetime
+import numpy as np
 import torch
 import gymnasium as gym
 
 from torch.utils.tensorboard import SummaryWriter
 import pathlib, yaml, logging
-import wandb
 from omegaconf import OmegaConf
+import wandb
 
-from mineclip.mineagent.batch import Batch
 from envs.utils import make_env
 from agents import PPOagent
 
@@ -19,7 +18,8 @@ def main(cfg):
         dname = dname + "_vclip"
     if cfg.agent.return_norm:
         dname = dname + "_rnorm"
-
+    if cfg.agent.autocast_flag:
+        dname = dname + "_autocast"
     
     cfg.agent.n_envs = cfg.env.num_envs
     cfg.agent.tsk = cfg.env.task
@@ -29,7 +29,7 @@ def main(cfg):
     if cfg.agent.train_image_model: suf_add = f'ppo-imgenc_{cfg.feature_net_kwargs.rgb_feat.image_model}'
     
     wandb.init(
-        project=f"beryllium_{suf_add}", # Change project name 
+        project=f"Beryllium_{suf_add}",         # Change project name 
         entity=None,
         sync_tensorboard=True,
         config=dict(cfg.agent),
@@ -54,7 +54,7 @@ def main(cfg):
         filemode='w'
     )
     
-    torch.cuda.set_device(1)
+    torch.cuda.set_device(0)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     num_envs = cfg.env.num_envs
@@ -91,7 +91,7 @@ def main(cfg):
                     if agent_info is not None:
                         ep_rew = agent_info["episode"]["r"]
                         ep_len = agent_info["episode"]["l"]
-                        # print(f"global step: {global_step}, agent_id={ind}, reward={ep_rew[-1]}, length={ep_len[-1]}")
+
                         logging.info(f"global step: {global_step}, agent_id={ind}, reward={ep_rew[-1]}, length={ep_len[-1]}")
                         writer.add_scalar("charts/episodic_return", ep_rew, global_step)
                         writer.add_scalar("charts/episodic_length", ep_len, global_step)
@@ -102,7 +102,6 @@ def main(cfg):
             agent.save_model(update+1)
         elif (update + 1) % (num_updates // 40) == 0:
             agent.save_model(update+1)
-        # agent.save_image_encoder(update+1)
 
     envs.close()
     writer.close()

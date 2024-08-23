@@ -71,9 +71,11 @@ agent:
 
   train_image_model: false
   load_ppo_model: false
-  ppo_checkpoint_path: "/home/kenjic/documents/update_mineppo/combat_spider_08_05-11:10_vclip_rnorm_update_40.pth"
+  ppo_checkpoint_path: ""
   load_image_model: false
   image_checkpoint_path: ""
+
+  autocast_flag: false
 
   gamma: 0.99
   gae_lambda: 0.95

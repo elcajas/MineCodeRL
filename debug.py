@@ -1,15 +1,14 @@
 import sys
-import numpy as np
 from datetime import datetime
+import numpy as np
 import torch
 import gymnasium as gym
 
 from torch.utils.tensorboard import SummaryWriter
 import pathlib, yaml, logging
-import wandb
 from omegaconf import OmegaConf
+import wandb
 
-from mineclip.mineagent.batch import Batch
 from envs.utils import make_env
 from agents import PPOagent
 
@@ -19,7 +18,8 @@ def main(cfg):
         dname = dname + "_vclip"
     if cfg.agent.return_norm:
         dname = dname + "_rnorm"
-
+    if cfg.agent.autocast_flag:
+        dname = dname + "_autocast"
     
     cfg.agent.n_envs = cfg.env.num_envs
     cfg.agent.tsk = cfg.env.task
@@ -65,7 +65,6 @@ def main(cfg):
     obs, _ = envs.reset()
     obs, frame = agent.process_obs(obs)
     next_done = torch.zeros(num_envs)
-    # agent.save_model(update=0)
 
     for update in range(initial_update, initial_update + num_updates):
         for step in range(num_steps):
@@ -101,6 +100,8 @@ def eval(cfg):
         dname = dname + "_vclip"
     if cfg.agent.return_norm:
         dname = dname + "_rnorm"
+    if cfg.agent.autocast_flag:
+        dname = dname + "_autocast"
 
     
     cfg.agent.n_envs = cfg.env.num_envs
@@ -146,7 +147,6 @@ def eval(cfg):
     obs, _ = envs.reset()
     obs, frame = agent.process_obs(obs)
     next_done = torch.zeros(num_envs)
-    # agent.save_model(update=0)
 
     for update in range(initial_update, initial_update + num_updates):
         for step in range(num_steps):
@@ -173,12 +173,9 @@ def eval(cfg):
         with torch.no_grad():
             last_value = agent.policy_model.get_value(obs).reshape(1, -1)
             agent.bf.calc_adv_and_return(last_value, next_done)
-        
-        # agent.learn(last_obs=obs, last_done=next_done, writer=writer, global_step=global_step)
 
     envs.close()
     writer.close()
-
 
 if __name__ == "__main__":
 
