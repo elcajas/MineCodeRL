@@ -62,7 +62,7 @@ env:
   num_envs: 1
 
 agent:
-  total_timesteps: 6000
+  total_timesteps: 1000
   num_steps: 500
   num_minibatches: 50
   learning_epochs: 1
