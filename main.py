@@ -16,7 +16,7 @@ from agents.ppo_model import PPOagent
 
 def main(cfg):
     
-    torch.cuda.set_device(0)
+    torch.cuda.set_device(cfg.agent.cuda_number)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     num_envs = cfg.env.num_envs
@@ -34,7 +34,7 @@ def main(cfg):
     initial_update = 0
 
     obs, _ = envs.reset()
-    obs, frame = agent.process_obs_prev(obs)
+    obs, frame = agent.process_obs(obs)
     next_done = torch.zeros(num_envs)
 
     for update in range(initial_update, initial_update + num_updates):
@@ -45,7 +45,7 @@ def main(cfg):
             next_obs, reward, done, _, info = envs.step(action.cpu().numpy())
             agent.store_experience(obs, action, logprob, torch.tensor(reward), next_done, val.squeeze(), frame)
 
-            obs, frame = agent.process_obs_prev(next_obs)
+            obs, frame = agent.process_obs(next_obs)
             next_done = torch.Tensor(done).to(device)
 
             if "final_info" in info:
@@ -90,7 +90,7 @@ if __name__ == "__main__":
     if cfg.agent.train_image_model: suf_add = f'ppo-imgenc_{cfg.feature_net_kwargs.rgb_feat.image_model}'
     
     wandb.init(
-        project=f"Beryllium_{suf_add}",         # Change project name 
+        project=f"{cfg.agent.server_name}_{suf_add}",         # Change project name 
         entity=None,
         sync_tensorboard=True,
         config=dict(cfg.agent),

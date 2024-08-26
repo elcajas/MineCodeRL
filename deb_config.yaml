@@ -50,19 +50,19 @@ mineclip:
   pool_type: "attn.d2.nh8.glusw"  # filled by variant
   resolution: [160, 256]
   ckpt:
-    path:  /home/kenjic/documents/weights/mineclip_weights/attn.pth # filled by user
+    path:  /home/kenjic/documents/MinedojoPPO/weights/mineclip_weights/attn.pth # filled by users
     checksum: "b5ece9198337cfd117a3bfbd921e56da"
 
 groundingdino:
-  ckpt: /home/kenjic/documents/weights/gdino_weights/groundingdino_swint_ogc.pth # filled by user
-  setfile: /home/kenjic/documents/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py # filled by user
+  ckpt: /home/kenjic/documents/MinedojoPPO/weights/gdino_weights/groundingdino_swint_ogc.pth # filled by user
+  setfile: /home/kenjic/documents/MinedojoPPO/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py # filled by user
 
 env:
-  task: "dummy env"
+  task: "combat spider"
   num_envs: 2
 
 agent:
-  total_timesteps: 6000
+  total_timesteps: 1000
   num_steps: 500
   num_minibatches: 50
   learning_epochs: 1
@@ -75,7 +75,9 @@ agent:
   load_image_model: false
   image_checkpoint_path: ""
 
-  autocast_flag: true
+  autocast_flag: false
+  cuda_number: 3
+  server_name: "Beryllium"
 
   gamma: 0.99
   gae_lambda: 0.95

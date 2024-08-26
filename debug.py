@@ -16,12 +16,13 @@ from agents.ppo_model import PPOagent
 
 def main(cfg):
 
-    torch.cuda.set_device(0)
+    torch.cuda.set_device(cfg.agent.cuda_number)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     num_envs = cfg.env.num_envs
     envs = gym.vector.AsyncVectorEnv([make_env(cfg.env.task, cfg.agent.seed + i, idx, results_dir) for idx, i in enumerate(range(num_envs))])
     agent = PPOagent(envs, cfg, device)
+
     if cfg.agent.load_ppo_model:
         agent.load_model(cfg.agent.ppo_checkpoint_path, cfg.agent.image_checkpoint_path)
 
@@ -64,7 +65,7 @@ def main(cfg):
 
 def eval(cfg):
 
-    torch.cuda.set_device(0)
+    torch.cuda.set_device(cfg.agent.cuda_number)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     num_envs = cfg.env.num_envs
