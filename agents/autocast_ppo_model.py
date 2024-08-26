@@ -1,7 +1,7 @@
+import numpy as np
 import time
 import os
 import logging
-import numpy as np
 from gymnasium import error
 
 import torch
@@ -18,10 +18,10 @@ from mineclip.utils import build_mlp
 
 from transformers import AutoProcessor
 
-from agents import features_mlp as F
-from .encoders import ImageEncoder
 from .utils import set_MineCLIP, set_gDINO, layer_init, set_hf_gDINO
 from .inference import predict
+from agents import features_mlp as F
+from .encoders import ImageEncoder
 
 class PPOBuffer:
     def __init__(self, env, cfg, device) -> None:
@@ -262,7 +262,7 @@ class PolicyNetwork(nn.Module):
         BOX_TRESHOLD = 0.35
         TEXT_TRESHOLD = 0.25
         
-        with torch.autocast(device_type=str(self.device), enabled=self.cfg.agent.autocast_flag):
+        with torch.autocast(device_type=str(self.device), enabled=self.cfg.agent.autocast_flag, dtype=torch.float16):
             if isinstance(self.image_model, MineCLIP):
                 return self.image_model.forward_image_features(images.to(self.device))
             
@@ -369,21 +369,6 @@ class PPOagent:
             }
             return Batch(**new_obs), obs['rgb'].transpose((0,2,3,1))
     
-    def process_obs_prev(self, obs):
-        raw_rgb = obs['rgb'].copy()
-        with torch.no_grad():
-            rgb_feat = self.policy_model.get_features(torch.tensor(raw_rgb))
-
-        pitch = torch.deg2rad(torch.from_numpy(obs['pitch']))
-        yaw = torch.deg2rad(torch.from_numpy(obs['yaw']))
-        new_obs = {
-            "rgb_feat": rgb_feat,
-            "compass": torch.cat((torch.sin(pitch), torch.cos(pitch), torch.sin(yaw), torch.cos(yaw)), dim=1),
-            "gps": torch.tensor(obs['pos']),
-            # "biome_id": torch.tensor(obs['biome_id']).unsqueeze(dim=1),
-        }
-        return Batch(**new_obs), obs['rgb'].transpose((0,2,3,1))
-    
     def minecip_reward(self):
 
         prompts = [
@@ -434,15 +419,16 @@ class PPOagent:
         b_obss, b_actions, b_logprobs, b_advantages, b_returns, b_values =  self.bf.get_batch()
 
         batch_size = int(self.cfg.agent.num_steps * self.cfg.env.num_envs)
-
         mb_size = self.cfg.agent.num_minibatches 
         assert batch_size % mb_size == 0, f"Number of samples: {batch_size} is not divisible by num_minibatches: {mb_size}"
         minibatch_size = int(batch_size // mb_size)
 
         b_inds = np.arange(batch_size)
         clipfracs = []
+
         for epoch in range(self.cfg.agent.learning_epochs):
             np.random.shuffle(b_inds)
+
             for start in range(0, batch_size, minibatch_size):
                 end = start + minibatch_size
                 mb_inds = b_inds[start:end]
@@ -454,7 +440,7 @@ class PPOagent:
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 
-                with torch.autocast(device_type=str(self.device), enabled=self.cfg.agent.autocast_flag):
+                with torch.autocast(device_type=str(self.device), enabled=self.cfg.agent.autocast_flag, dtype=torch.float16):
                     with torch.no_grad():
                         # calculate approx_kl http://joschu.net/blog/kl-approx.html
                         old_approx_kl = (-logratio).mean()
@@ -483,16 +469,18 @@ class PPOagent:
                     else:
                         v_loss = 0.5 * ((newvalue - mb_returns) ** 2).mean()
                     
+                    # Entropy loss
                     entropy_loss = entropy.mean()
+
+                    # Final Loss
                     loss = pg_loss - self.cfg.agent.ent_coef * entropy_loss +  self.cfg.agent.vf_coef * v_loss
 
+                # Bacward pass
                 self.optimizer.zero_grad()
-                self.scaler.scale(loss).backward()
-                # loss.backward()
+                self.scaler.scale(loss).backward()      # loss.backward()
                 self.scaler.unscale_(self.optimizer)
                 nn.utils.clip_grad_norm_(self.policy_model.parameters(), self.cfg.agent.max_grad_norm)
-                self.scaler.step(self.optimizer)
-                # self.optimizer.step()
+                self.scaler.step(self.optimizer)        # self.optimizer.step()
                 self.scaler.update()
 
             # if approx_kl > self.cfg.agent.target_kl:
@@ -512,7 +500,7 @@ class PPOagent:
         writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
         writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
-        print("SPS:", int(global_step / (time.time() - self.start_time)))
+        # print("SPS:", int(global_step / (time.time() - self.start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - self.start_time)), global_step)
 
     def save_model(self, update):
@@ -551,11 +539,3 @@ class PPOagent:
 
         except Exception as e:
             print("Error occurred while loading model weights:", e)
-
-    def save_image_encoder(self, update):
-        import loralib as lora
-        dirpath = f"{self.cfg.results_dir}/checkpoints"
-        os.makedirs(dirpath, exist_ok=True)
-        filepath = os.path.join(dirpath, f"image_encoder_update_{update}.pth")
-        torch.save(lora.lora_state_dict(self.image_model), filepath)
-        logging.info(f"Saving image model weights for update {update} in {filepath}.")

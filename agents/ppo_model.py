@@ -8,7 +8,6 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from mineclip import MineCLIP
@@ -17,9 +16,6 @@ from mineclip.mineagent.batch import Batch
 from mineclip.mineagent.actor.distribution import MultiCategorical
 from mineclip.utils import build_mlp
 
-from groundingdino.models import GroundingDINO
-import groundingdino.datasets.transforms as T
-from PIL import Image
 from transformers import AutoProcessor
 
 from .utils import set_MineCLIP, set_gDINO, layer_init, set_hf_gDINO
@@ -368,21 +364,6 @@ class PPOagent:
             }
             return Batch(**new_obs), obs['rgb'].transpose((0,2,3,1))
     
-    def process_obs_prev(self, obs):
-        raw_rgb = obs['rgb'].copy()
-        # with torch.no_grad():
-        rgb_feat = self.get_features(raw_rgb)
-
-        pitch = torch.deg2rad(torch.from_numpy(obs['pitch']))
-        yaw = torch.deg2rad(torch.from_numpy(obs['yaw']))
-        new_obs = {
-            "rgb_feat": rgb_feat,
-            "compass": torch.cat((torch.sin(pitch), torch.cos(pitch), torch.sin(yaw), torch.cos(yaw)), dim=1),
-            "gps": torch.tensor(obs['pos']),
-            # "biome_id": torch.tensor(obs['biome_id']).unsqueeze(dim=1),
-        }
-        return Batch(**new_obs), obs['rgb'].transpose((0,2,3,1))
-    
     def minecip_reward(self):
 
         prompts = [
@@ -423,7 +404,6 @@ class PPOagent:
         self.bf.rewards = rews
 
     def learn(self, last_obs, last_done, writer: SummaryWriter, global_step):
-        torch.autograd.set_detect_anomaly(True)
 
         self.shift_rewards()
         with torch.no_grad():
@@ -433,15 +413,16 @@ class PPOagent:
         b_obss, b_actions, b_logprobs, b_advantages, b_returns, b_values =  self.bf.get_batch()
 
         batch_size = int(self.cfg.agent.num_steps * self.cfg.env.num_envs)
-
         mb_size = self.cfg.agent.num_minibatches 
         assert batch_size % mb_size == 0, f"Number of samples: {batch_size} is not divisible by num_minibatches: {mb_size}"
         minibatch_size = int(batch_size // mb_size)
 
         b_inds = np.arange(batch_size)
         clipfracs = []
+
         for epoch in range(self.cfg.agent.learning_epochs):
             np.random.shuffle(b_inds)
+
             for start in range(0, batch_size, minibatch_size):
                 end = start + minibatch_size
                 mb_inds = b_inds[start:end]
@@ -480,9 +461,13 @@ class PPOagent:
                 else:
                     v_loss = 0.5 * ((newvalue - mb_returns) ** 2).mean()
                 
+                # Entropy loss
                 entropy_loss = entropy.mean()
-                loss = pg_loss - self.cfg.agent.ent_coef * entropy_loss +  self.cfg.agent.vf_coef * v_loss
 
+                # Final Loss
+                loss = pg_loss - self.cfg.agent.ent_coef * entropy_loss +  self.cfg.agent.vf_coef * v_loss
+                
+                # Bacward pass
                 self.optimizer.zero_grad()
                 loss.backward()
                 nn.utils.clip_grad_norm_(self.policy_model.parameters(), self.cfg.agent.max_grad_norm)
@@ -505,7 +490,7 @@ class PPOagent:
         writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
         writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
-        print("SPS:", int(global_step / (time.time() - self.start_time)))
+        # print("SPS:", int(global_step / (time.time() - self.start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - self.start_time)), global_step)
 
     def save_model(self, update):
@@ -544,11 +529,3 @@ class PPOagent:
 
         except Exception as e:
             print("Error occurred while loading model weights:", e)
-
-    def save_image_encoder(self, update):
-        import loralib as lora
-        dirpath = f"{self.cfg.results_dir}/checkpoints"
-        os.makedirs(dirpath, exist_ok=True)
-        filepath = os.path.join(dirpath, f"image_encoder_update_{update}.pth")
-        torch.save(lora.lora_state_dict(self.image_model), filepath)
-        logging.info(f"Saving image model weights for update {update} in {filepath}.")
