@@ -2,7 +2,7 @@ feature_net_kwargs:
   rgb_feat:
     cls: DummyImgFeat
     output_dim: 512
-    image_model: gdino # Image models: mineclip, gdino, hf_gdino, image_encoder
+    image_model: mineclip # Image models: mineclip, gdino, hf_gdino, image_encoder
   compass:
     cls: CompassMLP
     input_dim: 4
@@ -58,25 +58,28 @@ groundingdino:
   setfile: /home/kenjic/documents/MinedojoPPO/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py # filled by user
 
 env:
-  task: "combat spider"
+  task: "dummy env"
   num_envs: 2
 
 agent:
-  total_timesteps: 1000
-  num_steps: 500
-  num_minibatches: 50
-  learning_epochs: 1
+  total_timesteps: 10000
+  num_steps: 150
+  num_minibatches: 2
+  learning_epochs: 4
   clip_vloss: false
   return_norm: false
 
-  train_image_model: false
   load_ppo_model: false
-  ppo_checkpoint_path: ""
+  ppo_checkpoint_path: "/home/kenjic/documents/MinedojoPPO/MineCodeRL/results/only-ppo_gdino/combat_spider_08_26-13:06_vclip_rnorm_autocast/checkpoints/ppo_update_20.pth"
   load_image_model: false
   image_checkpoint_path: ""
 
-  autocast_flag: false
-  cuda_number: 3
+  train_image_model: false
+  lora_rank: 64
+  lora_alpha: 64
+
+  autocast_flag: true
+  cuda_number: 2
   server_name: "Beryllium"
 
   gamma: 0.99

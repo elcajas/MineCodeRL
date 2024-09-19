@@ -127,6 +127,8 @@ if __name__ == "__main__":
         dname = dname + "_rnorm"
     if cfg.agent.autocast_flag:
         dname = dname + "_autocast"
+    if cfg.agent.train_image_model:
+        dname = dname + "_training"
     
     cfg.agent.n_envs = cfg.env.num_envs
     cfg.agent.tsk = cfg.env.task

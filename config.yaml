@@ -63,20 +63,23 @@ env:
 
 agent:
   total_timesteps: 800000
-  num_steps: 10000
-  num_minibatches: 4
-  learning_epochs: 16
+  num_steps: 1024
+  num_minibatches: 32
+  learning_epochs: 2
   clip_vloss: true
   return_norm: true
 
-  train_image_model: false
   load_ppo_model: false
-  ppo_checkpoint_path: ""
+  ppo_checkpoint_path: "/home/kenjic/documents/MinedojoPPO/MineCodeRL/results/only-ppo_gdino/combat_spider_08_26-13:06_vclip_rnorm_autocast/checkpoints/ppo_update_15.pth"
   load_image_model: false
   image_checkpoint_path: ""
 
-  autocast_flag: false
-  cuda_number: 0
+  train_image_model: false
+  lora_rank: 64
+  lora_alpha: 64
+
+  autocast_flag: true
+  cuda_number: 1
   server_name: "Beryllium"
 
   gamma: 0.99

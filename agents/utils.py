@@ -40,7 +40,7 @@ def set_MineCLIP(cfg):
 
 def set_gDINO(cfg, device):
     if cfg.agent.train_image_model:
-        model = load_model_with_lora(cfg.groundingdino.setfile, cfg.groundingdino.ckpt, device, rank=8, lora_alpha=2)
+        model = load_model_with_lora(cfg.groundingdino.setfile, cfg.groundingdino.ckpt, device, rank=cfg.agent.lora_rank, lora_alpha=cfg.agent.lora_alpha)
         lora.mark_only_lora_as_trainable(model)
         print_trainable_parameters(model)
     
