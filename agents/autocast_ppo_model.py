@@ -98,15 +98,17 @@ class PPOBuffer:
                     self.capture_video(0, inds[ep], ep_num.item(), final_reward.item())
 
         if len(inds) > 0:
-            self.remain_frames = self.frames[inds[-1].item():, agent_idx].squeeze()
+            self.remain_frames = self.frames[inds[-1].item():, agent_idx]
+        elif self.remain_frames is None:
+            self.remain_frames = self.frames[:, agent_idx]
+        else:
+            self.remain_frames = np.concatenate((self.remain_frames, self.frames[:, agent_idx]), axis=0)
         self.ep_counter += self.dones.sum(dim=0)
         self.pointer = 0
 
     def capture_video(self, first_frame_idx, last_frame_idx, ep, rew):
-        frames = self.frames[first_frame_idx:last_frame_idx,0].squeeze()
+        frames = self.frames[first_frame_idx:last_frame_idx,0]
         if first_frame_idx == 0 and self.remain_frames is not None:
-            if (self.remain_frames.shape != frames.shape):
-                logging.info(f"remain: {self.remain_frames.shape}, frame: {self.remain_frames.shape}, frames: {self.frames.shape}")
             frames = np.concatenate((self.remain_frames, frames), axis=0)
             self.remain_frames = None
         if len(frames) > 0:
@@ -432,8 +434,8 @@ class PPOagent:
             for start in range(0, batch_size, minibatch_size):
                 end = start + minibatch_size
                 mb_inds = b_inds[start:end]
-                if end % 500 == 0:
-                    logging.info(f"Update [{epoch+1}/{self.cfg.agent.learning_epochs}] for minibatch: [{end}/{batch_size}]")
+                
+                logging.info(f"Update [{epoch+1}/{self.cfg.agent.learning_epochs}] for minibatch: [{end}/{batch_size}]")
 
                 _, newlogprob, entropy, newvalue = self.policy_model.get_action_and_value(b_obss[mb_inds], b_actions.long()[mb_inds])
                 # with torch.autocast():
