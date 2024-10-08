@@ -4,6 +4,7 @@ __pycache__/
 logs/
 debug_results/
 results/
+images/
 runs/
 wandb/
 observation_dict.pkl
