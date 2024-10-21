@@ -32,12 +32,13 @@ def cleanup_ddp():
     dist.destroy_process_group()
 
 def ddp_train(rank, devices, world_size, cfg, results_dir):
+    sys.stderr = open(results_dir+'/err.e', 'w')
     log_file = f"{cfg.results_dir}/output_{rank}.log"
     logging.basicConfig(
         filename=log_file,
         format="[%(asctime)s] [%(levelname)8s] --- %(message)s (%(filename)s:%(lineno)s)", datefmt="%Y-%m-%d %H:%M:%S",
         level=logging.INFO,
-        filemode='a'
+        filemode='w'
     )
 
     """Train the agent using DDP."""
@@ -153,7 +154,6 @@ if __name__ == "__main__":
     cfg.results_dir = results_dir
     if not os.path.exists(cfg.results_dir):
         os.makedirs(cfg.results_dir)
-    sys.stderr = open(results_dir+'/err.e', 'w')
     
     devices = [0, 1]
     world_size = len(devices)

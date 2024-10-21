@@ -425,7 +425,7 @@ class PPOagent:
             for start in range(0, batch_size, minibatch_size):
                 end = start + minibatch_size
                 mb_inds = b_inds[start:end]
-                if end % 500 == 0:
+                if end == batch_size:
                     logging.info(f"Update [{epoch+1}/{self.cfg.agent.learning_epochs}] for minibatch: [{end}/{batch_size}]")
 
                 _, newlogprob, entropy, newvalue = self.get_action_and_value(b_obss[mb_inds], b_actions.long()[mb_inds])
