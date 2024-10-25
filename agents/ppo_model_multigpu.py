@@ -504,6 +504,9 @@ class PPOagent:
                 'network_model': self.policy_model.module.network_model.state_dict(),
                 'actor': self.policy_model.module.actor.state_dict(),
                 'critic': self.policy_model.module.critic.state_dict(),
+                'optimizer': self.optimizer.state_dict(),
+                'scheduler': self.scheduler.state_dict(),
+                'update': update,
             }, ppo_filepath)
             logging.info(f"Saving ppo model weights for update {update} in {ppo_filepath}.")
 
@@ -521,11 +524,15 @@ class PPOagent:
             self.policy_model.network_model.load_state_dict(checkpoint['network_model'])
             self.policy_model.actor.load_state_dict(checkpoint['actor'])
             self.policy_model.critic.load_state_dict(checkpoint['critic'])
+            self.optimizer.load_state_dict(checkpoint['optimizer'])
+            self.scheduler.load_state_dict(checkpoint['scheduler'])
+            start_update = checkpoint['update']
             logging.info(f"Loading ppo model weights from {ppo_path}.")
 
             if self.cfg.agent.load_image_model:
                 self.policy_model.image_model.load_state_dict(torch.load(image_model_path), strict=False)
                 logging.info(f"Loading image model weights from {image_model_path}.")
+            return start_update
 
         except Exception as e:
             print("Error occurred while loading model weights:", e)

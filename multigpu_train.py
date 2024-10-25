@@ -40,7 +40,7 @@ def ddp_train(rank, devices, world_size, cfg, results_dir):
         level=logging.INFO,
         filemode='w'
     )
-
+    logging.info(f"Rank {rank} started training.")
     """Train the agent using DDP."""
     setup_ddp(rank, world_size)
     # Set the CUDA device for the current process
@@ -51,8 +51,9 @@ def ddp_train(rank, devices, world_size, cfg, results_dir):
     envs = gym.vector.AsyncVectorEnv([make_env(cfg.env.task, cfg.agent.seed + i, idx, results_dir) for idx, i in enumerate(range(num_envs))])
     agent = PPOagent(envs, cfg, device)
 
+    initial_update = 0
     if cfg.agent.load_ppo_model:
-        agent.load_model(cfg.agent.ppo_checkpoint_path, cfg.agent.image_checkpoint_path)
+        initial_update = agent.load_model(cfg.agent.ppo_checkpoint_path, cfg.agent.image_checkpoint_path)
     
     # Wrap the agent model with DDP
     agent.policy_model = DDP(agent.policy_model, device_ids=[devices[rank]])
@@ -71,7 +72,6 @@ def ddp_train(rank, devices, world_size, cfg, results_dir):
     num_updates  = cfg.agent.total_timesteps // batch_size
     
     global_step = 0
-    initial_update = 0
 
     obs, _ = envs.reset()
     obs, frame = agent.process_obs(obs)
@@ -155,6 +155,6 @@ if __name__ == "__main__":
     if not os.path.exists(cfg.results_dir):
         os.makedirs(cfg.results_dir)
     
-    devices = [0, 1]
+    devices = cfg.agent.devices
     world_size = len(devices)
     mp.spawn(ddp_train, args=(devices, world_size, cfg, results_dir), nprocs=world_size, join=True)
