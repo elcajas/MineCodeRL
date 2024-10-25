@@ -75,6 +75,7 @@ agent:
   image_checkpoint_path: ""
 
   multigpu: true
+  devices: [0, 1]
   train_image_model: true
   lora_rank: 64
   lora_alpha: 64
