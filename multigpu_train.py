@@ -1,6 +1,7 @@
 import os, sys
 from datetime import datetime
 from tqdm import tqdm
+import argparse
 
 import numpy as np
 import torch
@@ -17,6 +18,37 @@ from agents.ppo_model_multigpu import PPOagent
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--config", type=str, required=True, help="Path to the configuration file")
+args = parser.parse_args()
+
+dir_path = pathlib.Path(__file__).parent.resolve()
+with open(dir_path.joinpath(args.config), "r") as f:    # Change config file, conf_local.yaml
+    cfg = yaml.safe_load(f)
+cfg = OmegaConf.create(cfg)
+
+dname = f"{cfg.env.task.replace(' ', '_')}_{datetime.now().strftime('%m_%d-%H:%M')}"
+if cfg.agent.clip_vloss:
+    dname = dname + "_vclip"
+if cfg.agent.return_norm:
+    dname = dname + "_rnorm"
+if cfg.agent.autocast_flag:
+    dname = dname + "_autocast"
+if cfg.agent.multigpu:
+    dname = dname + "_multigpu"
+
+cfg.agent.n_envs = cfg.env.num_envs
+cfg.agent.tsk = cfg.env.task
+cfg.agent.image_model = cfg.feature_net_kwargs.rgb_feat.image_model
+
+suf_add = f'only-ppo_{cfg.feature_net_kwargs.rgb_feat.image_model}'
+if cfg.agent.train_image_model: suf_add = f'train-imgppo_{cfg.feature_net_kwargs.rgb_feat.image_model}'
+
+results_dir = f"results/{suf_add}/{dname}"
+cfg.results_dir = results_dir
+if not os.path.exists(cfg.results_dir):
+    os.makedirs(cfg.results_dir)
 
 def setup_ddp(rank, worlds_size):
     """Initialize DistributedDataParallel (DDP) for multi-GPU training."""
@@ -48,12 +80,12 @@ def ddp_train(rank, devices, world_size, cfg, results_dir):
     torch.cuda.set_device(device)
 
     num_envs = cfg.env.num_envs
-    envs = gym.vector.AsyncVectorEnv([make_env(cfg.env.task, cfg.agent.seed + i, idx, results_dir) for idx, i in enumerate(range(num_envs))])
+    envs = gym.vector.SyncVectorEnv([make_env(cfg.env.task, cfg.agent.seed + i, idx) for idx, i in enumerate(range(num_envs))])
     agent = PPOagent(envs, cfg, device)
 
     initial_update = 0
     if cfg.agent.load_ppo_model:
-        initial_update = agent.load_model(cfg.agent.ppo_checkpoint_path, cfg.agent.image_checkpoint_path)
+        agent.load_model(cfg.agent.ppo_checkpoint_path, cfg.agent.image_checkpoint_path)
     
     # Wrap the agent model with DDP
     agent.policy_model = DDP(agent.policy_model, device_ids=[devices[rank]])
@@ -61,6 +93,15 @@ def ddp_train(rank, devices, world_size, cfg, results_dir):
     # Create SummaryWriter only for rank 0
     writer = None
     if rank == 0:
+        if cfg.hyperparameters.wandb_init:
+            wandb.init(
+                project=f"{cfg.agent.server_name}_{suf_add}",         # Change project name 
+                entity=None,
+                sync_tensorboard=True,
+                config=dict(cfg.agent),
+                name=dname,
+            )
+
         writer = SummaryWriter(results_dir)
         writer.add_text(
             "hyperparameters",
@@ -119,42 +160,10 @@ def ddp_train(rank, devices, world_size, cfg, results_dir):
     cleanup_ddp()
 
 if __name__ == "__main__":
-
-    dir_path = pathlib.Path(__file__).parent.resolve()
-    with open(dir_path.joinpath("multigpu_config.yaml"), "r") as f:    # Change config file, conf_local.yaml
-        cfg = yaml.safe_load(f)
-    cfg = OmegaConf.create(cfg)
-
-    dname = f"{cfg.env.task.replace(' ', '_')}_{datetime.now().strftime('%m_%d-%H:%M')}"
-    if cfg.agent.clip_vloss:
-        dname = dname + "_vclip"
-    if cfg.agent.return_norm:
-        dname = dname + "_rnorm"
-    if cfg.agent.autocast_flag:
-        dname = dname + "_autocast"
-    if cfg.agent.multigpu:
-        dname = dname + "_multigpu"
-
-    cfg.agent.n_envs = cfg.env.num_envs
-    cfg.agent.tsk = cfg.env.task
-    cfg.agent.image_model = cfg.feature_net_kwargs.rgb_feat.image_model
-
-    suf_add = f'only-ppo_{cfg.feature_net_kwargs.rgb_feat.image_model}'
-    if cfg.agent.train_image_model: suf_add = f'ppo-imgenc_{cfg.feature_net_kwargs.rgb_feat.image_model}'
-
-    # wandb.init(
-    #     project=f"{cfg.agent.server_name}_{suf_add}",         # Change project name 
-    #     entity=None,
-    #     sync_tensorboard=True,
-    #     config=dict(cfg.agent),
-    #     name=dname,
-    # )
-
-    results_dir = f"debug_results/{suf_add}/{dname}"
-    cfg.results_dir = results_dir
-    if not os.path.exists(cfg.results_dir):
-        os.makedirs(cfg.results_dir)
     
     devices = cfg.agent.devices
+    if not isinstance(devices, list):
+        devices = list(range(torch.cuda.device_count()))
+    print(f'Devices for training: {devices}')
     world_size = len(devices)
-    mp.spawn(ddp_train, args=(devices, world_size, cfg, results_dir), nprocs=world_size, join=True)
+    mp.spawn(ddp_train, args=(devices, world_size, cfg, results_dir), nprocs=world_size, join=True) 
