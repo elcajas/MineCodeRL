@@ -39,9 +39,9 @@ class PPOBuffer:
         if cfg.agent.train_image_model: feat_dim = [3, 160, 256]
         
         obss = {
-            "rgb_feat": torch.zeros((capacity, num_envs, *(feat_dim))).to(device),      
-            "compass": torch.zeros((capacity, num_envs, 4)).to(device),
-            "gps": torch.zeros((capacity, num_envs, 3)).to(device),
+            "rgb_feat": torch.zeros((capacity, num_envs, *(feat_dim))),      
+            "compass": torch.zeros((capacity, num_envs, 4)),
+            "gps": torch.zeros((capacity, num_envs, 3)),
             # "biome_id": torch.zeros((num_steps, num_envs, 1)),
         }
         
@@ -98,15 +98,17 @@ class PPOBuffer:
                     self.capture_video(0, inds[ep], ep_num.item(), final_reward.item())
 
         if len(inds) > 0:
-            self.remain_frames = self.frames[inds[-1].item():, agent_idx].squeeze()
+            self.remain_frames = self.frames[inds[-1].item():, agent_idx]
+        elif self.remain_frames is None:
+            self.remain_frames = self.frames[:, agent_idx]
+        else:
+            self.remain_frames = np.concatenate((self.remain_frames, self.frames[:, agent_idx]), axis=0)
         self.ep_counter += self.dones.sum(dim=0)
         self.pointer = 0
 
     def capture_video(self, first_frame_idx, last_frame_idx, ep, rew):
-        frames = self.frames[first_frame_idx:last_frame_idx,0].squeeze()
+        frames = self.frames[first_frame_idx:last_frame_idx,0]
         if first_frame_idx == 0 and self.remain_frames is not None:
-            if (self.remain_frames.shape != frames.shape):
-                logging.info(f"remain: {self.remain_frames.shape}, frame: {self.remain_frames.shape}, frames: {self.frames.shape}")
             frames = np.concatenate((self.remain_frames, frames), axis=0)
             self.remain_frames = None
         if len(frames) > 0:
@@ -524,15 +526,14 @@ class PPOagent:
             self.policy_model.network_model.load_state_dict(checkpoint['network_model'])
             self.policy_model.actor.load_state_dict(checkpoint['actor'])
             self.policy_model.critic.load_state_dict(checkpoint['critic'])
-            self.optimizer.load_state_dict(checkpoint['optimizer'])
-            self.scheduler.load_state_dict(checkpoint['scheduler'])
-            start_update = checkpoint['update']
+            # self.optimizer.load_state_dict(checkpoint['optimizer'])
+            # self.scheduler.load_state_dict(checkpoint['scheduler'])
+            # start_update = checkpoint['update']
             logging.info(f"Loading ppo model weights from {ppo_path}.")
 
             if self.cfg.agent.load_image_model:
                 self.policy_model.image_model.load_state_dict(torch.load(image_model_path), strict=False)
                 logging.info(f"Loading image model weights from {image_model_path}.")
-            return start_update
 
         except Exception as e:
             print("Error occurred while loading model weights:", e)
