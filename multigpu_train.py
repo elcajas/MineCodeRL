@@ -19,37 +19,6 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--config", type=str, required=True, help="Path to the configuration file")
-args = parser.parse_args()
-
-dir_path = pathlib.Path(__file__).parent.resolve()
-with open(dir_path.joinpath(args.config), "r") as f:    # Change config file, conf_local.yaml
-    cfg = yaml.safe_load(f)
-cfg = OmegaConf.create(cfg)
-
-dname = f"{cfg.env.task.replace(' ', '_')}_{datetime.now().strftime('%m_%d-%H:%M')}"
-if cfg.agent.clip_vloss:
-    dname = dname + "_vclip"
-if cfg.agent.return_norm:
-    dname = dname + "_rnorm"
-if cfg.agent.autocast_flag:
-    dname = dname + "_autocast"
-if cfg.agent.multigpu:
-    dname = dname + "_multigpu"
-
-cfg.agent.n_envs = cfg.env.num_envs
-cfg.agent.tsk = cfg.env.task
-cfg.agent.image_model = cfg.feature_net_kwargs.rgb_feat.image_model
-
-suf_add = f'only-ppo_{cfg.feature_net_kwargs.rgb_feat.image_model}'
-if cfg.agent.train_image_model: suf_add = f'train-imgppo_{cfg.feature_net_kwargs.rgb_feat.image_model}'
-
-results_dir = f"results/{suf_add}/{dname}"
-cfg.results_dir = results_dir
-if not os.path.exists(cfg.results_dir):
-    os.makedirs(cfg.results_dir)
-
 def setup_ddp(rank, worlds_size):
     """Initialize DistributedDataParallel (DDP) for multi-GPU training."""
     dist.init_process_group(
@@ -63,7 +32,7 @@ def cleanup_ddp():
     """Cleanup DistributedDataParallel (DDP) resources."""
     dist.destroy_process_group()
 
-def ddp_train(rank, devices, world_size, cfg, results_dir):
+def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname):
     sys.stderr = open(results_dir+'/err.e', 'w')
     log_file = f"{cfg.results_dir}/output_{rank}.log"
     logging.basicConfig(
@@ -161,9 +130,40 @@ def ddp_train(rank, devices, world_size, cfg, results_dir):
 
 if __name__ == "__main__":
     
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, required=True, help="Path to the configuration file")
+    args = parser.parse_args()
+
+    dir_path = pathlib.Path(__file__).parent.resolve()
+    with open(dir_path.joinpath(args.config), "r") as f:    # Change config file, conf_local.yaml
+        cfg = yaml.safe_load(f)
+    cfg = OmegaConf.create(cfg)
+
+    dname = f"{cfg.env.task.replace(' ', '_')}_{datetime.now().strftime('%m_%d-%H:%M')}"
+    if cfg.agent.clip_vloss:
+        dname = dname + "_vclip"
+    if cfg.agent.return_norm:
+        dname = dname + "_rnorm"
+    if cfg.agent.autocast_flag:
+        dname = dname + "_autocast"
+    if cfg.agent.multigpu:
+        dname = dname + "_multigpu"
+
+    cfg.agent.n_envs = cfg.env.num_envs
+    cfg.agent.tsk = cfg.env.task
+    cfg.agent.image_model = cfg.feature_net_kwargs.rgb_feat.image_model
+
+    suf_add = f'only-ppo_{cfg.feature_net_kwargs.rgb_feat.image_model}'
+    if cfg.agent.train_image_model: suf_add = f'train-imgppo_{cfg.feature_net_kwargs.rgb_feat.image_model}'
+
+    results_dir = f"results/{suf_add}/{dname}"
+    cfg.results_dir = results_dir
+    if not os.path.exists(cfg.results_dir):
+        os.makedirs(cfg.results_dir)
+
     devices = cfg.agent.devices
     if not isinstance(devices, list):
         devices = list(range(torch.cuda.device_count()))
     print(f'Devices for training: {devices}')
     world_size = len(devices)
-    mp.spawn(ddp_train, args=(devices, world_size, cfg, results_dir), nprocs=world_size, join=True) 
+    mp.spawn(ddp_train, args=(devices, world_size, cfg, results_dir, suf_add, dname), nprocs=world_size, join=True) 
