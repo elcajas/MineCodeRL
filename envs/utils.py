@@ -120,7 +120,7 @@ class MineDojoWrapper(gym.Wrapper):
     def _convert_obs(self, obs: Dict[str, Any]) -> Dict[str, np.ndarray]:
         converted_obs = {
             "rgb": obs["rgb"].copy(),
-            "biome_id": obs["location_stats"]["biome_id"],
+            "biome_id": obs["location_stats"]["biome_id"].astype(np.uint8),
             "pos": obs["location_stats"]["pos"],
             "yaw": obs["location_stats"]["yaw"],
             "pitch": obs["location_stats"]["pitch"],
@@ -183,7 +183,7 @@ def create_env(task, seed):
     )
     return MineDojoWrapper(env, seed)
 
-def make_env(task, seed, idx, run_name):
+def make_env(task, seed, idx):
     def thunk():
         env = create_env(task, seed)
         # if idx == 0:
