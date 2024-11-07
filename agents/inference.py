@@ -208,9 +208,28 @@ def annotate(image_source: np.ndarray, boxes: torch.Tensor, logits: torch.Tensor
         in zip(phrases, logits)
     ]
 
-    box_annotator = sv.BoxAnnotator()
     annotated_frame = cv2.cvtColor(image_source, cv2.COLOR_RGB2BGR)
-    annotated_frame = box_annotator.annotate(scene=annotated_frame, detections=detections, labels=labels)
+
+    for detection, label in zip(detections.xyxy, labels):
+        x1, y1, x2, y2 = map(int, detection)
+        # Draw the bounding box
+        cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        # Adjust the text properties
+        font_scale = 0.3  # Smaller text size
+        thickness = 1
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        text_size, _ = cv2.getTextSize(label, font, font_scale, thickness)
+        text_w, text_h = text_size
+
+        # Position the text below the top-left corner of the bounding box
+        text_x = x1
+        text_y = y1 + text_h + 3  # A small margin below the top-left corner
+
+        # Draw text background
+        cv2.rectangle(annotated_frame, (text_x, text_y - text_h - 2), (text_x + text_w, text_y + 2), (0, 255, 0), -1)
+        # Put the text on the image
+        cv2.putText(annotated_frame, label, (text_x, text_y), font, font_scale, (0, 0, 0), thickness)
+
     return annotated_frame
 
 
