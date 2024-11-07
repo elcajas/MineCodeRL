@@ -50,12 +50,12 @@ mineclip:
   pool_type: "attn.d2.nh8.glusw"  # filled by variant
   resolution: [160, 256]
   ckpt:
-    path:  /home/kenjic/documents/MinedojoPPO/weights/mineclip_weights/attn.pth # filled by users
+    path:  "" # filled by users
     checksum: "b5ece9198337cfd117a3bfbd921e56da"
 
 groundingdino:
-  ckpt: /home/kenjic/documents/MinedojoPPO/weights/gdino_weights/groundingdino_swint_ogc.pth # filled by user
-  setfile: /home/kenjic/documents/MinedojoPPO/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py # filled by user
+  ckpt: "" # filled by user
+  setfile: "" # filled by user
 
 env:
   task: "dummy env"
@@ -70,7 +70,7 @@ agent:
   return_norm: false
 
   load_ppo_model: false
-  ppo_checkpoint_path: "/home/kenjic/documents/MinedojoPPO/MineCodeRL/results/only-ppo_gdino/combat_spider_08_26-13:06_vclip_rnorm_autocast/checkpoints/ppo_update_20.pth"
+  ppo_checkpoint_path: ""
   load_image_model: false
   image_checkpoint_path: ""
 
@@ -78,9 +78,9 @@ agent:
   lora_rank: 64
   lora_alpha: 64
 
-  autocast_flag: true
+  autocast_flag: false
   cuda_number: 2
-  server_name: "Beryllium"
+  server_name: ""
 
   gamma: 0.99
   gae_lambda: 0.95
@@ -113,7 +113,7 @@ hyperparameters:
   video_min_rew: 32
 
   load_checkpoint: false
-  checkpoint_dir: "/home/user/Mine/results/run_231109_0814/weights"
+  checkpoint_dir: ""
   checkpoint_epoch: 0
 
   imitation_learning: false
