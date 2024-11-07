@@ -526,12 +526,12 @@ class PPOagent:
             self.policy_model.network_model.load_state_dict(checkpoint['network_model'])
             self.policy_model.actor.load_state_dict(checkpoint['actor'])
             self.policy_model.critic.load_state_dict(checkpoint['critic'])
-            # self.optimizer.load_state_dict(checkpoint['optimizer'])
-            # self.scheduler.load_state_dict(checkpoint['scheduler'])
             # start_update = checkpoint['update']
             logging.info(f"Loading ppo model weights from {ppo_path}.")
 
             if self.cfg.agent.load_image_model:
+                self.optimizer.load_state_dict(checkpoint['optimizer'])
+                self.scheduler.load_state_dict(checkpoint['scheduler'])
                 self.policy_model.image_model.load_state_dict(torch.load(image_model_path), strict=False)
                 logging.info(f"Loading image model weights from {image_model_path}.")
 

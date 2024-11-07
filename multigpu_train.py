@@ -33,6 +33,7 @@ def cleanup_ddp():
     dist.destroy_process_group()
 
 def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname):
+
     sys.stderr = open(results_dir+'/err.e', 'w')
     log_file = f"{cfg.results_dir}/output_{rank}.log"
     logging.basicConfig(
@@ -129,7 +130,7 @@ def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname):
     cleanup_ddp()
 
 if __name__ == "__main__":
-    
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, required=True, help="Path to the configuration file")
     args = parser.parse_args()
@@ -160,6 +161,7 @@ if __name__ == "__main__":
     cfg.results_dir = results_dir
     if not os.path.exists(cfg.results_dir):
         os.makedirs(cfg.results_dir)
+    OmegaConf.save(cfg, results_dir + '/config.yaml')
 
     devices = cfg.agent.devices
     if not isinstance(devices, list):
