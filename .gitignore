@@ -5,6 +5,7 @@ logs/
 debug_results/
 results/
 images/
+configs/
 runs/
 wandb/
 observation_dict.pkl
