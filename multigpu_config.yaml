@@ -59,6 +59,7 @@ groundingdino:
 
 env:
   task: "combat spider"
+  prompt: "spider . cow . sky . animal . tree ."
   num_envs: 2
 
 agent:

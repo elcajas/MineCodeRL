@@ -321,7 +321,7 @@ class PPOagent:
             return self.policy_model.module.image_model(images.to(self.device))
         
         if self.cfg.feature_net_kwargs.rgb_feat.image_model == "gdino":
-            TEXT_PROMPT = "spider . cow . sky . animal . tree ."
+            TEXT_PROMPT = self.cfg.env.prompt
 
             logits = predict(
                 model=self.policy_model.module.image_model,
