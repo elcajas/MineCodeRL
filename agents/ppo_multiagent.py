@@ -281,11 +281,11 @@ class PPOagent:
     def store_experience(self, *args) -> None:
         self.bf.store(*args)
         
-    def process_obs(self, obs):
+    def process_obs(self, obs, rank):
         if not self.cfg.agent.train_image_model:
             raw_rgb = obs['rgb'].copy()
             with torch.no_grad():
-                rgb_feat = self.get_features(torch.tensor(raw_rgb))            # later check if with torch.no_grad() is required
+                rgb_feat = self.get_features(torch.tensor(raw_rgb), rank)            # later check if with torch.no_grad() is required
 
             pitch = torch.deg2rad(torch.from_numpy(obs['pitch']))
             yaw = torch.deg2rad(torch.from_numpy(obs['yaw']))
@@ -307,7 +307,7 @@ class PPOagent:
             }
             return Batch(**new_obs), obs['rgb'].transpose((0,2,3,1))
     
-    def get_features(self, images: torch.Tensor):
+    def get_features(self, images: torch.Tensor, rank):
         # calculated from 21K video clips, which contains 2.8M frames
         MC_IMAGE_MEAN = (0.3331, 0.3245, 0.3051)
         MC_IMAGE_STD = (0.2439, 0.2493, 0.2873)
@@ -321,8 +321,10 @@ class PPOagent:
             return self.policy_model.module.image_model(images.to(self.device))
         
         if self.cfg.feature_net_kwargs.rgb_feat.image_model == "gdino":
-            TEXT_PROMPT = self.cfg.env.prompt
-
+            if rank % 2 == 0:
+                TEXT_PROMPT = self.cfg.agent.prompt1
+            else:
+                TEXT_PROMPT = self.cfg.agent.prompt2
             logits = predict(
                 model=self.policy_model.module.image_model,
                 images=images.cpu().numpy(),
@@ -334,16 +336,17 @@ class PPOagent:
             return logits
         
         else:
-            TEXT_PROMPT = "spider . cow . sky . animal . tree ."
+            # TEXT_PROMPT = "spider . cow . sky . animal . tree ."
+            TEXT_PROMPT = "zombie . sky . animal . tree ."
             inputs = self.policy_model.module.processor(images=images, text=[TEXT_PROMPT]*len(images), return_tensors="pt").to(self.device)
             # with torch.no_grad():
             outputs = self.policy_model.module.image_model(**inputs, output_hidden_states=True)
             logits = outputs.decoder_hidden_states[1].transpose(-1,-2)
             return logits
     
-    def get_action_and_value(self, batch, action=None):
+    def get_action_and_value(self, batch, action=None, rank=0):
         img_feat = batch.rgb_feat
-        if self.cfg.agent.train_image_model: img_feat = self.get_features(batch.rgb_feat)
+        if self.cfg.agent.train_image_model: img_feat = self.get_features(batch.rgb_feat, rank)
         
         hidden, _ = self.policy_model.module.network_model(Batch(rgb_feat=img_feat, compass=batch.compass, gps=batch.gps))
         logits, _ = self.policy_model.module.actor(hidden)
@@ -357,9 +360,9 @@ class PPOagent:
 
         return action, logprob, entropy, value
     
-    def get_value(self, batch):
+    def get_value(self, batch, rank):
         img_feat = batch.rgb_feat
-        if self.cfg.agent.train_image_model: img_feat = self.get_features(batch.rgb_feat)
+        if self.cfg.agent.train_image_model: img_feat = self.get_features(batch.rgb_feat, rank)
 
         hidden, _ = self.policy_model.module.network_model(Batch(rgb_feat=img_feat, compass=batch.compass, gps=batch.gps))
         value, _ = self.policy_model.module.critic(hidden)
@@ -408,7 +411,7 @@ class PPOagent:
 
         self.shift_rewards()
         with torch.no_grad():
-            last_value = self.get_value(last_obs).reshape(1, -1)
+            last_value = self.get_value(last_obs, rank).reshape(1, -1)
             self.bf.calc_adv_and_return(last_value, last_done)
         
         b_obss, b_actions, b_logprobs, b_advantages, b_returns, b_values =  self.bf.get_batch()
@@ -430,7 +433,7 @@ class PPOagent:
                 if end == batch_size:
                     logging.info(f"Update [{epoch+1}/{self.cfg.agent.learning_epochs}] for minibatch: [{end}/{batch_size}]")
 
-                _, newlogprob, entropy, newvalue = self.get_action_and_value(b_obss[mb_inds], b_actions.long()[mb_inds])
+                _, newlogprob, entropy, newvalue = self.get_action_and_value(b_obss[mb_inds], b_actions.long()[mb_inds], rank)
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 

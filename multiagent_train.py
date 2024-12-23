@@ -13,7 +13,7 @@ from omegaconf import OmegaConf
 import wandb
 
 from envs.utils import make_env
-from agents.ppo_model_multigpu import PPOagent
+from agents.ppo_multiagent import PPOagent
 
 import torch.distributed as dist
 import torch.multiprocessing as mp
@@ -50,7 +50,11 @@ def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname):
     torch.cuda.set_device(device)
 
     num_envs = cfg.env.num_envs
-    envs = gym.vector.SyncVectorEnv([make_env(cfg.env.task, cfg.agent.seed + i, idx) for idx, i in enumerate(range(num_envs))])
+    if rank % 2 == 0:
+        envs = gym.vector.SyncVectorEnv([make_env(cfg.env.task1, cfg.agent.seed + i, idx) for idx, i in enumerate(range(num_envs))])
+    else:
+        envs = gym.vector.SyncVectorEnv([make_env(cfg.env.task2, cfg.agent.seed + i, idx) for idx, i in enumerate(range(num_envs))])
+
     agent = PPOagent(envs, cfg, device)
 
     initial_update = 0
@@ -85,7 +89,7 @@ def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname):
     global_step = 0
 
     obs, _ = envs.reset()
-    obs, frame = agent.process_obs(obs)
+    obs, frame = agent.process_obs(obs, rank)
     next_done = torch.zeros(num_envs)
 
     for update in range(initial_update, initial_update + num_updates):
@@ -101,7 +105,7 @@ def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname):
             next_obs, reward, done, _, info = envs.step(action.cpu().numpy())
             agent.store_experience(obs, action, logprob, torch.tensor(reward), next_done, val.squeeze(), frame)
 
-            obs, frame = agent.process_obs(next_obs)
+            obs, frame = agent.process_obs(next_obs, rank)
             next_done = torch.Tensor(done).to(rank)
 
             if "final_info" in info:
@@ -140,7 +144,7 @@ if __name__ == "__main__":
         cfg = yaml.safe_load(f)
     cfg = OmegaConf.create(cfg)
 
-    dname = f"{cfg.env.task.replace(' ', '_')}_{datetime.now().strftime('%m_%d-%H:%M')}"
+    dname = f"{cfg.env.task1.replace(' ', '_')}_{cfg.env.task2.replace(' ', '_')}_{datetime.now().strftime('%m_%d-%H:%M')}"
     if cfg.agent.clip_vloss:
         dname = dname + "_vclip"
     if cfg.agent.return_norm:
@@ -151,7 +155,8 @@ if __name__ == "__main__":
         dname = dname + "_multigpu"
 
     cfg.agent.n_envs = cfg.env.num_envs
-    cfg.agent.tsk = cfg.env.task
+    cfg.agent.tsk1 = cfg.env.task1
+    cfg.agent.tsk2 = cfg.env.task2
     cfg.agent.image_model = cfg.feature_net_kwargs.rgb_feat.image_model
 
     suf_add = f'only-ppo_{cfg.feature_net_kwargs.rgb_feat.image_model}'
