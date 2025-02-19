@@ -88,7 +88,7 @@ def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname, port)
     initial_update = 0
 
     obs, _ = envs.reset()
-    obs, frame = agent.process_obs(obs, rank)
+    obs, frame = agent.process_obs(obs)
     next_done = torch.zeros(num_envs)
 
     for update in range(initial_update, initial_update + num_updates):
@@ -104,7 +104,7 @@ def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname, port)
             next_obs, reward, done, _, info = envs.step(action.cpu().numpy())
             agent.store_experience(obs, action, logprob, torch.tensor(reward), next_done, val.squeeze(), frame)
 
-            obs, frame = agent.process_obs(next_obs, rank)
+            obs, frame = agent.process_obs(next_obs)
             next_done = torch.Tensor(done).to(rank)
 
             if "final_info" in info:
