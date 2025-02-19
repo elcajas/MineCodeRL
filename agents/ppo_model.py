@@ -327,7 +327,13 @@ class PPOagent:
         self.bf = PPOBuffer(env, cfg, device)
         self.policy_model = PolicyNetwork(env, cfg, device).to(device)
 
-        self.optimizer = Adam(self.policy_model.parameters(), lr = cfg.agent.learning_rate)
+        # self.optimizer = Adam(self.policy_model.parameters(), lr = cfg.agent.learning_rate)
+        self.optimizer = Adam([
+            {'params': self.policy_model.network_model.parameters(), 'lr': cfg.agent.policy_learning_rate},
+            {'params': self.policy_model.actor.parameters(), 'lr': cfg.agent.policy_learning_rate},
+            {'params': self.policy_model.critic.parameters(), 'lr': cfg.agent.policy_learning_rate},
+            {'params': self.policy_model.image_model.parameters(), 'lr': cfg.agent.vision_learning_rate},
+        ])
         self.scheduler = CosineAnnealingLR(self.optimizer, T_max=num_updates, eta_min=cfg.agent.min_lr)
         self.env = env
         self.cfg = cfg
