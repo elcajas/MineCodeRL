@@ -545,20 +545,23 @@ class PPOagent:
         except Exception as e:
             print("Error occurred while saving model weights:", e)
 
-    def load_model(self, ppo_path, load_vision, image_model_path):
+    def load_model(self, policy_path, load_vision, vision_path):
         try:
-            checkpoint = torch.load(ppo_path, map_location='cpu')
+            print(f"Loading ppo model weights from {policy_path}.")
+            checkpoint = torch.load(policy_path, map_location='cpu')
             self.policy_model.network_model.load_state_dict(checkpoint['network_model'])
             self.policy_model.actor.load_state_dict(checkpoint['actor'])
             self.policy_model.critic.load_state_dict(checkpoint['critic'])
             # start_update = checkpoint['update']
-            logging.info(f"Loading ppo model weights from {ppo_path}.")
+            logging.info(f"Loading ppo model weights from {policy_path}.")
 
             if load_vision:
+                print(f"Loading image model weights from {vision_path}.")
                 self.optimizer.load_state_dict(checkpoint['optimizer'])
                 self.scheduler.load_state_dict(checkpoint['scheduler'])
-                self.policy_model.image_model.load_state_dict(torch.load(image_model_path), strict=False)
-                logging.info(f"Loading image model weights from {image_model_path}.")
+                self.policy_model.image_model.load_state_dict(torch.load(vision_path), strict=False)
+                logging.info(f"Loading image model weights from {vision_path}.")
 
         except Exception as e:
             print("Error occurred while loading model weights:", e)
+            raise
