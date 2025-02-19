@@ -262,7 +262,13 @@ class PPOagent:
 
         num_steps = cfg.agent.num_steps
         batch_size = int(num_steps * cfg.agent.num_envs)
+        num_minibatch = cfg.agent.num_minibatches
+        assert batch_size % num_minibatch == 0, f"Number of samples: {batch_size} is not divisible by num_minibatches: {num_minibatch}"
+        minibatch_size = int(batch_size // num_minibatch)
         num_updates  = cfg.agent.total_timesteps // batch_size
+
+        self.batch_size = batch_size
+        self.minibatch_size = minibatch_size
 
         self.bf = PPOBuffer(env, cfg, device)
         self.policy_model = PolicyNetwork(env, cfg, device).to(device)
@@ -422,12 +428,7 @@ class PPOagent:
         
         b_obss, b_actions, b_logprobs, b_advantages, b_returns, b_values =  self.bf.get_batch()
 
-        batch_size = int(self.cfg.agent.num_steps * self.cfg.env.num_envs)
-        mb_size = self.cfg.agent.num_minibatches 
-        assert batch_size % mb_size == 0, f"Number of samples: {batch_size} is not divisible by num_minibatches: {mb_size}"
-        minibatch_size = int(batch_size // mb_size)
-
-        b_inds = np.arange(batch_size)
+        b_inds = np.arange(self.batch_size)
         clipfracs = []
 
         for epoch in range(self.cfg.agent.learning_epochs):
