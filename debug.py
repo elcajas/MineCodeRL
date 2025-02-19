@@ -15,16 +15,13 @@ from envs.utils import make_env
 from agents.ppo_model import PPOagent
 
 def main(cfg):
-
+    
     torch.cuda.set_device(cfg.agent.cuda_number)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    num_envs = cfg.env.num_envs
-    envs = gym.vector.AsyncVectorEnv([make_env(cfg.env.task, cfg.agent.seed + i, idx, results_dir) for idx, i in enumerate(range(num_envs))])
+    num_envs = cfg.agent.num_envs
+    envs = gym.vector.AsyncVectorEnv([make_env(cfg.agent.task, cfg.agent.seed + i, idx) for idx, i in enumerate(range(num_envs))])
     agent = PPOagent(envs, cfg, device)
-
-    if cfg.agent.load_ppo_model:
-        agent.load_model(cfg.agent.ppo_checkpoint_path, cfg.agent.image_checkpoint_path)
 
     num_steps = cfg.agent.num_steps
     batch_size = int(num_steps * num_envs)
@@ -68,11 +65,9 @@ def eval(cfg):
     torch.cuda.set_device(cfg.agent.cuda_number)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    num_envs = cfg.env.num_envs
-    envs = gym.vector.AsyncVectorEnv([make_env(cfg.env.task, cfg.agent.seed + i, idx, results_dir) for idx, i in enumerate(range(num_envs))])
+    num_envs = cfg.agent.num_envs
+    envs = gym.vector.AsyncVectorEnv([make_env(cfg.agent.task, cfg.agent.seed + i, idx) for idx, i in enumerate(range(num_envs))])
     agent = PPOagent(envs, cfg, device)
-    if cfg.agent.load_ppo_model:
-        agent.load_model(cfg.agent.ppo_checkpoint_path, cfg.agent.image_checkpoint_path)
 
     num_steps = cfg.agent.num_steps
     batch_size = int(num_steps * num_envs)
@@ -120,20 +115,20 @@ if __name__ == "__main__":
         cfg = yaml.safe_load(f)
     cfg = OmegaConf.create(cfg)
 
-    dname = f"{cfg.env.task.replace(' ', '_')}_{datetime.now().strftime('%m_%d-%H:%M')}"
+    dname = f"{cfg.agent.task.replace(' ', '_')}_{datetime.now().strftime('%m_%d-%H:%M')}"
     if cfg.agent.clip_vloss:
         dname = dname + "_vclip"
     if cfg.agent.return_norm:
         dname = dname + "_rnorm"
     if cfg.agent.autocast_flag:
         dname = dname + "_autocast"
-    
-    cfg.agent.n_envs = cfg.env.num_envs
-    cfg.agent.tsk = cfg.env.task
+    if cfg.agent.multigpu:
+        dname = dname + "_multigpu"
+
     cfg.agent.image_model = cfg.feature_net_kwargs.rgb_feat.image_model
 
     suf_add = f'only-ppo_{cfg.feature_net_kwargs.rgb_feat.image_model}'
-    if cfg.agent.train_image_model: suf_add = f'ppo-imgenc_{cfg.feature_net_kwargs.rgb_feat.image_model}'
+    if cfg.agent.train_image_model: suf_add = f'train-imgppo_{cfg.feature_net_kwargs.rgb_feat.image_model}'
 
     results_dir = f"debug_results/{suf_add}/{dname}"
     cfg.results_dir = results_dir
@@ -145,7 +140,7 @@ if __name__ == "__main__":
     )
     sys.stderr = open(results_dir+'/err.e', 'w')
 
-    log_file = f"{cfg.results_dir}/output.log"
+    log_file = f"{results_dir}/output.log"
     logging.basicConfig(
         filename=log_file,
         format="[%(asctime)s] [%(levelname)8s] --- %(message)s (%(filename)s:%(lineno)s)", datefmt="%Y-%m-%d %H:%M:%S",

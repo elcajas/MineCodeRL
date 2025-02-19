@@ -57,15 +57,14 @@ groundingdino:
   ckpt: "" # filled by user
   setfile: "" # filled by user
 
-env:
-  task: "dummy env"
-  num_envs: 2
-
 agent:
+  task: "dummy env"
+  prompt: "cow . bucket . sky . animal . tree ."
+  num_envs: 1
   total_timesteps: 10000
-  num_steps: 150
-  num_minibatches: 2
-  learning_epochs: 4
+  num_steps: 500
+  num_minibatches: 5
+  learning_epochs: 10
   clip_vloss: false
   return_norm: false
 
@@ -74,6 +73,8 @@ agent:
   load_image_model: false
   image_checkpoint_path: ""
 
+  multigpu: false
+  devices: "all"
   train_image_model: false
   lora_rank: 64
   lora_alpha: 64
@@ -82,12 +83,13 @@ agent:
   cuda_number: 2
   server_name: ""
 
+  policy_learning_rate: !!float 1e-4 #1e-4
+  vision_learning_rate: !!float 1e-4 #1e-4
+  min_lr: !!float 1e-6
   gamma: 0.99
   gae_lambda: 0.95
   seed: 1
   clip_coef: 0.2
-  learning_rate: !!float 1e-4
-  min_lr: !!float 1e-6
   ent_coef: 0.005
   vf_coef: 0.5
   max_grad_norm: 10
