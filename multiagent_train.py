@@ -65,17 +65,16 @@ def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname, port)
     # Wrap the agent model with DDP
     agent.policy_model = DDP(agent.policy_model, device_ids=[devices[rank]])
 
-    # Create SummaryWriter only for rank 0
-    writer = None
-    if rank == 0:
-        if cfg.hyperparameters.wandb_init:
-            wandb.init(
-                project=f"{cfg.agent.server_name}_{suf_add}",         # Change project name 
-                entity=None,
-                sync_tensorboard=True,
-                config=dict(cfg.agent),
-                name=dname,
-            )
+    # Create SummaryWriter for all ranks
+    if cfg.hyperparameters.wandb_init:
+        wandb.init(
+            project=f"{cfg.agent.server_name}_{suf_add}",         # Change project name 
+            entity=None,
+            sync_tensorboard=True,
+            config=dict(cfg.agent),
+            name=dname,
+            group="multi-rank-experiment",
+        )
 
         writer = SummaryWriter(results_dir)
         writer.add_text(
@@ -117,10 +116,10 @@ def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname, port)
                         ep_len = agent_info["episode"]["l"]
 
                         logging.info(f"rank: {rank} global step: {global_step}, agent_id={ind}, reward={ep_rew[-1]}, length={ep_len[-1]}")
-                        # Log to TensorBoard only rank 0
-                        if rank == 0:
-                            writer.add_scalar("charts/episodic_return", ep_rew, global_step)
-                            writer.add_scalar("charts/episodic_length", ep_len, global_step)
+                        
+                        # Log to TensorBoard to all ranks
+                        writer.add_scalar("charts/episodic_return", ep_rew, global_step)
+                        writer.add_scalar("charts/episodic_length", ep_len, global_step)
 
         agent.learn(last_obs=obs, last_done=next_done, writer=writer, global_step=global_step, rank=rank)
         if rank == 0:
