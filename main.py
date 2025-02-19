@@ -24,9 +24,6 @@ def main(cfg):
     envs = gym.vector.AsyncVectorEnv([make_env(cfg.env.task, cfg.agent.seed + i, idx, results_dir) for idx, i in enumerate(range(num_envs))])
     agent = PPOagent(envs, cfg, device)
 
-    if cfg.agent.load_ppo_model:
-        agent.load_model(cfg.agent.ppo_checkpoint_path, cfg.agent.image_checkpoint_path)
-
     num_steps = cfg.agent.num_steps
     batch_size = int(num_steps * num_envs)
     num_updates  = cfg.agent.total_timesteps // batch_size
