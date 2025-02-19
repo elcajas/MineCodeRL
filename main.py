@@ -1,4 +1,4 @@
-import sys
+import os, sys
 from datetime import datetime
 from tqdm import tqdm
 
@@ -98,7 +98,9 @@ if __name__ == "__main__":
     )
 
     results_dir = f"results/{suf_add}/{dname}"
-    cfg.results_dir = results_dir
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir)
+    OmegaConf.save(cfg, results_dir + '/config.yaml')
 
     writer = SummaryWriter(results_dir)
     writer.add_text(
