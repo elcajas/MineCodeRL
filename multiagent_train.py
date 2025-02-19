@@ -51,15 +51,14 @@ def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname, port)
     device = torch.device(f'cuda:{devices[rank]}')
     torch.cuda.set_device(device)
 
-    num_envs = cfg.env.num_envs
+    num_envs = cfg.agent.num_envs
     if rank % 2 == 0:
-        envs = gym.vector.SyncVectorEnv([make_env(cfg.env.task1, cfg.agent.seed + i, idx) for idx, i in enumerate(range(num_envs))])
+        envs = gym.vector.SyncVectorEnv([make_env(cfg.agent.task1, cfg.agent.seed + i, idx) for idx, i in enumerate(range(num_envs))])
     else:
-        envs = gym.vector.SyncVectorEnv([make_env(cfg.env.task2, cfg.agent.seed + i, idx) for idx, i in enumerate(range(num_envs))])
+        envs = gym.vector.SyncVectorEnv([make_env(cfg.agent.task2, cfg.agent.seed + i, idx) for idx, i in enumerate(range(num_envs))])
 
     agent = PPOagent(envs, cfg, device)
 
-    initial_update = 0
     if cfg.agent.load_ppo_model:
         agent.load_model(cfg.agent.ppo_checkpoint_path, cfg.agent.image_checkpoint_path)
     
@@ -89,6 +88,7 @@ def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname, port)
     num_updates  = cfg.agent.total_timesteps // batch_size
     
     global_step = 0
+    initial_update = 0
 
     obs, _ = envs.reset()
     obs, frame = agent.process_obs(obs, rank)
@@ -146,7 +146,7 @@ if __name__ == "__main__":
         cfg = yaml.safe_load(f)
     cfg = OmegaConf.create(cfg)
 
-    dname = f"{cfg.env.task1.replace(' ', '_')}_{cfg.env.task2.replace(' ', '_')}_{datetime.now().strftime('%m_%d-%H:%M')}"
+    dname = f"{cfg.agent.task1.replace(' ', '_')}_{cfg.agent.task2.replace(' ', '_')}_{datetime.now().strftime('%m_%d-%H:%M')}"
     if cfg.agent.clip_vloss:
         dname = dname + "_vclip"
     if cfg.agent.return_norm:
@@ -156,9 +156,6 @@ if __name__ == "__main__":
     if cfg.agent.multigpu:
         dname = dname + "_multigpu"
 
-    cfg.agent.n_envs = cfg.env.num_envs
-    cfg.agent.tsk1 = cfg.env.task1
-    cfg.agent.tsk2 = cfg.env.task2
     cfg.agent.image_model = cfg.feature_net_kwargs.rgb_feat.image_model
 
     suf_add = f'only-ppo_{cfg.feature_net_kwargs.rgb_feat.image_model}'
