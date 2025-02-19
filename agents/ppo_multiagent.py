@@ -29,7 +29,7 @@ class PPOBuffer:
         self.cfg = cfg
         self.env = env
         capacity = cfg.agent.num_steps
-        num_envs = cfg.env.num_envs
+        num_envs = cfg.agent.num_envs
         
         # set feature dimension depending on image model (mineclip: 512, gdino: (256, 900))
         # If train grounding dino, rgb pixel dimension is used (3,160,256)
@@ -261,7 +261,7 @@ class PPOagent:
     def __init__(self, env, cfg, device) -> None:
 
         num_steps = cfg.agent.num_steps
-        batch_size = int(num_steps * cfg.env.num_envs)
+        batch_size = int(num_steps * cfg.agent.num_envs)
         num_updates  = cfg.agent.total_timesteps // batch_size
 
         self.bf = PPOBuffer(env, cfg, device)
