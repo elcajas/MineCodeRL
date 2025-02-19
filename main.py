@@ -20,8 +20,8 @@ def main(cfg):
     torch.cuda.set_device(cfg.agent.cuda_number)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    num_envs = cfg.env.num_envs
-    envs = gym.vector.AsyncVectorEnv([make_env(cfg.env.task, cfg.agent.seed + i, idx, results_dir) for idx, i in enumerate(range(num_envs))])
+    num_envs = cfg.agent.num_envs
+    envs = gym.vector.AsyncVectorEnv([make_env(cfg.agent.task, cfg.agent.seed + i, idx) for idx, i in enumerate(range(num_envs))])
     agent = PPOagent(envs, cfg, device)
 
     num_steps = cfg.agent.num_steps
@@ -76,30 +76,32 @@ if __name__ == "__main__":
         cfg = yaml.safe_load(f)
     cfg = OmegaConf.create(cfg)
 
-    dname = f"{cfg.env.task.replace(' ', '_')}_{datetime.now().strftime('%m_%d-%H:%M')}"
+    dname = f"{cfg.agent.task.replace(' ', '_')}_{datetime.now().strftime('%m_%d-%H:%M')}"
     if cfg.agent.clip_vloss:
         dname = dname + "_vclip"
     if cfg.agent.return_norm:
         dname = dname + "_rnorm"
     if cfg.agent.autocast_flag:
         dname = dname + "_autocast"
-    
-    cfg.agent.n_envs = cfg.env.num_envs
-    cfg.agent.tsk = cfg.env.task
+    if cfg.agent.multigpu:
+        dname = dname + "_multigpu"
+
     cfg.agent.image_model = cfg.feature_net_kwargs.rgb_feat.image_model
 
     suf_add = f'only-ppo_{cfg.feature_net_kwargs.rgb_feat.image_model}'
-    if cfg.agent.train_image_model: suf_add = f'ppo-imgenc_{cfg.feature_net_kwargs.rgb_feat.image_model}'
+    if cfg.agent.train_image_model: suf_add = f'train-imgppo_{cfg.feature_net_kwargs.rgb_feat.image_model}'
     
-    wandb.init(
-        project=f"{cfg.agent.server_name}_{suf_add}",         # Change project name 
-        entity=None,
-        sync_tensorboard=True,
-        config=dict(cfg.agent),
-        name=dname,
-    )
+    if cfg.hyperparameters.wandb_init:
+        wandb.init(
+            project=f"{cfg.agent.server_name}_{suf_add}",         # Change project name 
+            entity=None,
+            sync_tensorboard=True,
+            config=dict(cfg.agent),
+            name=dname,
+        )
 
     results_dir = f"results/{suf_add}/{dname}"
+    cfg.agent.results_dir = results_dir
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
     OmegaConf.save(cfg, results_dir + '/config.yaml')
@@ -111,7 +113,7 @@ if __name__ == "__main__":
     )
     sys.stderr = open(results_dir+'/err.e', 'w')
 
-    log_file = f"{cfg.results_dir}/output.log"
+    log_file = f"{results_dir}/output.log"
     logging.basicConfig(
         filename=log_file,
         format="[%(asctime)s] [%(levelname)8s] --- %(message)s (%(filename)s:%(lineno)s)", datefmt="%Y-%m-%d %H:%M:%S",

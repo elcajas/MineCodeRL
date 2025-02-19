@@ -29,7 +29,7 @@ class PPOBuffer:
         self.cfg = cfg
         self.env = env
         capacity = cfg.agent.num_steps
-        num_envs = cfg.env.num_envs
+        num_envs = cfg.agent.num_envs
         
         # set feature dimension depending on image model (mineclip: 512, gdino: (256, 900))
         # If train grounding dino, rgb pixel dimension is used (3,160,256)
@@ -120,7 +120,7 @@ class PPOBuffer:
 
             clip = ImageSequenceClip(list(frames), fps=10)
 
-            dirpath = f"{self.cfg.results_dir}/videos/agent0"
+            dirpath = f"{self.cfg.agent.results_dir}/videos/agent0"
             os.makedirs(dirpath, exist_ok=True)
             filepath = os.path.join(dirpath, f"ep{int(ep)}_rew{rew:.1f}_len{len(frames)}.mp4")
             clip.write_videofile(filepath, logger=None)
@@ -321,8 +321,26 @@ class PPOagent:
     def __init__(self, env, cfg, device) -> None:
 
         num_steps = cfg.agent.num_steps
-        batch_size = int(num_steps * cfg.env.num_envs)
+        batch_size = int(num_steps * cfg.agent.num_envs)
+        num_minibatch = cfg.agent.num_minibatches
+        assert batch_size % num_minibatch == 0, f"Number of samples: {batch_size} is not divisible by num_minibatches: {num_minibatch}"
+        minibatch_size = int(batch_size // num_minibatch)
         num_updates  = cfg.agent.total_timesteps // batch_size
+
+        self.batch_size = batch_size
+        self.minibatch_size = minibatch_size
+
+        self.epochs = cfg.agent.learning_epochs
+        self.clip_coef = cfg.agent.clip_coef
+        self.vf_coef = cfg.agent.vf_coef
+        self.ent_coef = cfg.agent.ent_coef
+        self.max_grad_norm = cfg.agent.max_grad_norm
+        self.target_kl = cfg.agent.target_kl
+
+        self.results_dir = cfg.agent.results_dir
+        self.normalized_return = cfg.agent.return_norm
+        self.clip_vloss = cfg.agent.clip_vloss
+        self.train_vision = cfg.agent.train_image_model
 
         self.bf = PPOBuffer(env, cfg, device)
         self.policy_model = PolicyNetwork(env, cfg, device).to(device)
@@ -351,7 +369,7 @@ class PPOagent:
         self.bf.store(*args)
         
     def process_obs(self, obs):
-        if not self.cfg.agent.train_image_model:
+        if not self.train_vision:
             raw_rgb = obs['rgb'].copy()
             with torch.no_grad():
                 rgb_feat = self.policy_model.get_features(torch.tensor(raw_rgb))            # later check if with torch.no_grad() is required
@@ -424,22 +442,17 @@ class PPOagent:
         
         b_obss, b_actions, b_logprobs, b_advantages, b_returns, b_values =  self.bf.get_batch()
 
-        batch_size = int(self.cfg.agent.num_steps * self.cfg.env.num_envs)
-        mb_size = self.cfg.agent.num_minibatches 
-        assert batch_size % mb_size == 0, f"Number of samples: {batch_size} is not divisible by num_minibatches: {mb_size}"
-        minibatch_size = int(batch_size // mb_size)
-
-        b_inds = np.arange(batch_size)
+        b_inds = np.arange(self.batch_size)
         clipfracs = []
 
-        for epoch in range(self.cfg.agent.learning_epochs):
+        for epoch in range(self.epochs):
             np.random.shuffle(b_inds)
 
-            for start in range(0, batch_size, minibatch_size):
-                end = start + minibatch_size
+            for start in range(0, self.batch_size, self.minibatch_size):
+                end = start + self.minibatch_size
                 mb_inds = b_inds[start:end]
-                if end % 500 == 0:
-                    logging.info(f"Update [{epoch+1}/{self.cfg.agent.learning_epochs}] for minibatch: [{end}/{batch_size}]")
+                if end == self.batch_size:
+                    logging.info(f"Update [{epoch+1}/{self.epochs}] for minibatch: [{end}/{self.batch_size}]")
 
                 _, newlogprob, entropy, newvalue = self.policy_model.get_action_and_value(b_obss[mb_inds], b_actions.long()[mb_inds])
                 logratio = newlogprob - b_logprobs[mb_inds]
@@ -449,24 +462,24 @@ class PPOagent:
                     # calculate approx_kl http://joschu.net/blog/kl-approx.html
                     old_approx_kl = (-logratio).mean()
                     approx_kl = ((ratio - 1) - logratio).mean()
-                    clipfracs += [((ratio - 1.0).abs() > self.cfg.agent.clip_coef).float().mean().item()]
+                    clipfracs += [((ratio - 1.0).abs() > self.clip_coef).float().mean().item()]
                 
                 mb_advantages = b_advantages[mb_inds]
                 mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
 
                 # Policy loss
                 pg_loss1 = -mb_advantages * ratio
-                pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - self.cfg.agent.clip_coef, 1 + self.cfg.agent.clip_coef)
+                pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - self.clip_coef, 1 + self.clip_coef)
                 pg_loss = torch.max(pg_loss1, pg_loss2).mean()
 
                 # Value loss
                 newvalue = newvalue.view(-1)
                 mb_returns = b_returns[mb_inds]
-                if self.cfg.agent.return_norm:
+                if self.normalized_return:
                     mb_returns = (mb_returns - mb_returns.mean()) / (mb_returns.std() + 1e-8)
-                if self.cfg.agent.clip_vloss:
+                if self.clip_vloss:
                     v_loss_unclipped = (newvalue - mb_returns) ** 2
-                    v_clipped = b_values[mb_inds] + torch.clamp(newvalue - b_values[mb_inds], -self.cfg.agent.clip_coef, self.cfg.agent.clip_coef)
+                    v_clipped = b_values[mb_inds] + torch.clamp(newvalue - b_values[mb_inds], -self.clip_coef, self.clip_coef)
                     v_loss_clipped = (v_clipped - mb_returns) ** 2
                     v_loss_max = torch.max(v_loss_unclipped, v_loss_clipped)
                     v_loss = 0.5 * v_loss_max.mean()
@@ -477,15 +490,15 @@ class PPOagent:
                 entropy_loss = entropy.mean()
 
                 # Final Loss
-                loss = pg_loss - self.cfg.agent.ent_coef * entropy_loss +  self.cfg.agent.vf_coef * v_loss
+                loss = pg_loss - self.ent_coef * entropy_loss +  self.vf_coef * v_loss
                 
                 # Bacward pass
                 self.optimizer.zero_grad()
                 loss.backward()
-                nn.utils.clip_grad_norm_(self.policy_model.parameters(), self.cfg.agent.max_grad_norm)
+                nn.utils.clip_grad_norm_(self.policy_model.parameters(), self.max_grad_norm)
                 self.optimizer.step()
 
-            # if approx_kl > self.cfg.agent.target_kl:
+            # if approx_kl > self.target_kl:
             #     break
 
         self.scheduler.step()
@@ -509,7 +522,7 @@ class PPOagent:
         try:
             import loralib as lora
             # Create the directory if it doesn't exist
-            dirpath = f"{self.cfg.results_dir}/checkpoints"
+            dirpath = f"{self.results_dir}/checkpoints"
             os.makedirs(dirpath, exist_ok=True)
             ppo_filepath = os.path.join(dirpath, f"ppo_update_{update}.pth")
             torch.save({
@@ -519,7 +532,7 @@ class PPOagent:
             }, ppo_filepath)
             logging.info(f"Saving ppo model weights for update {update} in {ppo_filepath}.")
 
-            if self.cfg.agent.train_image_model:
+            if self.train_vision:
                 im_filepath = os.path.join(dirpath, f"im_update_{update}.pth")
                 torch.save(lora.lora_state_dict(self.policy_model.image_model), im_filepath)
                 logging.info(f"Saving image model weights for update {update} in {im_filepath}.")
