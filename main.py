@@ -1,6 +1,7 @@
 import os, sys
 from datetime import datetime
 from tqdm import tqdm
+import argparse
 
 import numpy as np
 import torch
@@ -69,8 +70,12 @@ def main(cfg):
 
 if __name__ == "__main__":
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, required=True, help="Path to the configuration file")
+    args = parser.parse_args()
+
     dir_path = pathlib.Path(__file__).parent.resolve()
-    with open(dir_path.joinpath("config.yaml"), "r") as f:    # Change config file, conf_local.yaml
+    with open(dir_path.joinpath(args.config), "r") as f:    # Change config file, conf_local.yaml
         cfg = yaml.safe_load(f)
     cfg = OmegaConf.create(cfg)
 
