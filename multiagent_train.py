@@ -158,15 +158,9 @@ if __name__ == "__main__":
 
     cfg.agent.image_model = cfg.feature_net_kwargs.rgb_feat.image_model
 
-    suf_add = f'only-ppo_{cfg.feature_net_kwargs.rgb_feat.image_model}'
-    if cfg.agent.train_image_model: suf_add = f'train-imgppo_{cfg.feature_net_kwargs.rgb_feat.image_model}'
-
-    results_dir = f"results/{suf_add}/{dname}"
-    cfg.results_dir = results_dir
-    if not os.path.exists(cfg.results_dir):
-        os.makedirs(cfg.results_dir)
-    OmegaConf.save(cfg, results_dir + '/config.yaml')
-
+    suf_add = f'only-ppo_{cfg.feature_net_kwargs.rgb_feat.image_model}-multiagent'
+    if cfg.agent.train_image_model: suf_add = f'train-imgppo_{cfg.feature_net_kwargs.rgb_feat.image_model}-multiagent'
+    
     devices = cfg.agent.devices
     if not isinstance(devices, list):
         devices = list(range(torch.cuda.device_count()))
