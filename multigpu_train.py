@@ -49,15 +49,8 @@ def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname):
     device = torch.device(f'cuda:{devices[rank]}')
     torch.cuda.set_device(device)
 
-    num_envs = cfg.env.num_envs
-    envs = gym.vector.SyncVectorEnv([make_env(cfg.env.task, cfg.agent.seed + i, idx) for idx, i in enumerate(range(num_envs))])
-    agent = PPOagent(envs, cfg, device)
-
-    initial_update = 0
-    if cfg.agent.load_ppo_model:
-        agent.load_model(cfg.agent.ppo_checkpoint_path, cfg.agent.image_checkpoint_path)
-    
     # Wrap the agent model with DDP
+    agent = PPOagent(envs, cfg, device)
     agent.policy_model = DDP(agent.policy_model, device_ids=[devices[rank]])
 
     # Create SummaryWriter only for rank 0
