@@ -76,7 +76,9 @@ def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname, port)
             group="multi-rank-experiment",
         )
 
-        writer = SummaryWriter(results_dir)
+    log_dir = f"{results_dir}/tensorboard/rank_{rank}"
+    writer = SummaryWriter(log_dir)
+    if rank == 0:
         writer.add_text(
             "hyperparameters",
             "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in cfg.agent.items()])),
