@@ -37,7 +37,7 @@ def cleanup_ddp():
 def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname, port):
 
     sys.stderr = open(results_dir+'/err.e', 'w')
-    log_file = f"{cfg.results_dir}/output_{rank}.log"
+    log_file = f"{results_dir}/output_{rank}.log"
     logging.basicConfig(
         filename=log_file,
         format="[%(asctime)s] [%(levelname)8s] --- %(message)s (%(filename)s:%(lineno)s)", datefmt="%Y-%m-%d %H:%M:%S",
@@ -51,6 +51,8 @@ def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname, port)
     device = torch.device(f'cuda:{devices[rank]}')
     torch.cuda.set_device(device)
 
+    num_envs = cfg.agent.num_envs
+    envs = gym.vector.SyncVectorEnv([make_env(cfg.agent.task, cfg.agent.seed + i, idx) for idx, i in enumerate(range(num_envs))])
     # Wrap the agent model with DDP
     agent = PPOagent(envs, cfg, device)
     agent.policy_model = DDP(agent.policy_model, device_ids=[devices[rank]])
@@ -78,6 +80,7 @@ def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname, port)
     num_updates  = cfg.agent.total_timesteps // batch_size
     
     global_step = 0
+    initial_update = 0
 
     obs, _ = envs.reset()
     obs, frame = agent.process_obs(obs)
@@ -111,7 +114,7 @@ def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname, port)
                             writer.add_scalar("charts/episodic_return", ep_rew, global_step)
                             writer.add_scalar("charts/episodic_length", ep_len, global_step)
 
-        agent.learn(last_obs=obs, last_done=next_done, writer=writer, global_step=global_step, rank=rank)
+        agent.learn(last_obs=obs, last_done=next_done, writer=writer, global_step=global_step)
         if rank == 0:
             if num_updates < 40:
                 agent.save_model(update+1)
@@ -135,7 +138,7 @@ if __name__ == "__main__":
         cfg = yaml.safe_load(f)
     cfg = OmegaConf.create(cfg)
 
-    dname = f"{cfg.env.task.replace(' ', '_')}_{datetime.now().strftime('%m_%d-%H:%M')}"
+    dname = f"{cfg.agent.task.replace(' ', '_')}_{datetime.now().strftime('%m_%d-%H:%M')}"
     if cfg.agent.clip_vloss:
         dname = dname + "_vclip"
     if cfg.agent.return_norm:
@@ -145,23 +148,23 @@ if __name__ == "__main__":
     if cfg.agent.multigpu:
         dname = dname + "_multigpu"
 
-    cfg.agent.n_envs = cfg.env.num_envs
-    cfg.agent.tsk = cfg.env.task
     cfg.agent.image_model = cfg.feature_net_kwargs.rgb_feat.image_model
 
     suf_add = f'only-ppo_{cfg.feature_net_kwargs.rgb_feat.image_model}'
     if cfg.agent.train_image_model: suf_add = f'train-imgppo_{cfg.feature_net_kwargs.rgb_feat.image_model}'
-
-    results_dir = f"results/{suf_add}/{dname}"
-    cfg.results_dir = results_dir
-    if not os.path.exists(cfg.results_dir):
-        os.makedirs(cfg.results_dir)
-    OmegaConf.save(cfg, results_dir + '/config.yaml')
-
+    
     devices = cfg.agent.devices
     if not isinstance(devices, list):
         devices = list(range(torch.cuda.device_count()))
     print(f'Devices for training: {devices}')
+    cfg.agent.devices = devices
+
+    results_dir = f"results/{suf_add}/{dname}"
+    cfg.agent.results_dir = results_dir
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir)
+    OmegaConf.save(cfg, results_dir + '/config.yaml')
+
     world_size = len(devices)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(('', 0))
