@@ -57,12 +57,8 @@ def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname, port)
     else:
         envs = gym.vector.SyncVectorEnv([make_env(cfg.agent.task2, cfg.agent.seed + i, idx) for idx, i in enumerate(range(num_envs))])
 
-    agent = PPOagent(envs, cfg, device)
-
-    if cfg.agent.load_ppo_model:
-        agent.load_model(cfg.agent.ppo_checkpoint_path, cfg.agent.image_checkpoint_path)
-    
     # Wrap the agent model with DDP
+    agent = PPOagent(envs, cfg, device)
     agent.policy_model = DDP(agent.policy_model, device_ids=[devices[rank]])
 
     # Create SummaryWriter for all ranks

@@ -297,6 +297,9 @@ class PPOagent:
         self.cfg = cfg
         self.device = device
         self.start_time = time.time()
+
+        if cfg.agent.load_ppo_model:
+            self.load_model(cfg.agent.ppo_checkpoint_path, cfg.agent.load_image_model, cfg.agent.image_checkpoint_path)
     
     def select_action(self, obs) -> torch.Tensor:
         with torch.no_grad():
@@ -542,7 +545,7 @@ class PPOagent:
         except Exception as e:
             print("Error occurred while saving model weights:", e)
 
-    def load_model(self, ppo_path, image_model_path):
+    def load_model(self, ppo_path, load_vision, image_model_path):
         try:
             checkpoint = torch.load(ppo_path, map_location='cpu')
             self.policy_model.network_model.load_state_dict(checkpoint['network_model'])
@@ -551,7 +554,7 @@ class PPOagent:
             # start_update = checkpoint['update']
             logging.info(f"Loading ppo model weights from {ppo_path}.")
 
-            if self.cfg.agent.load_image_model:
+            if load_vision:
                 self.optimizer.load_state_dict(checkpoint['optimizer'])
                 self.scheduler.load_state_dict(checkpoint['scheduler'])
                 self.policy_model.image_model.load_state_dict(torch.load(image_model_path), strict=False)
