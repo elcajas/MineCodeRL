@@ -39,9 +39,9 @@ class PPOBuffer:
         if cfg.agent.train_image_model: feat_dim = [3, 160, 256]
         
         obss = {
-            "rgb_feat": torch.zeros((capacity, num_envs, *(feat_dim))).to(device),      
-            "compass": torch.zeros((capacity, num_envs, 4)).to(device),
-            "gps": torch.zeros((capacity, num_envs, 3)).to(device),
+            "rgb_feat": torch.zeros((capacity, num_envs, *(feat_dim))),      
+            "compass": torch.zeros((capacity, num_envs, 4)),
+            "gps": torch.zeros((capacity, num_envs, 3)),
             # "biome_id": torch.zeros((num_steps, num_envs, 1)),
         }
         
