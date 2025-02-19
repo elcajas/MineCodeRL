@@ -148,7 +148,7 @@ class MineDojoWrapper(gym.Wrapper):
     
 def create_env(task, seed):
     step_penalty = 0
-    nav_reward_scale = 0
+    nav_reward_scale = 1
     attack_reward = 5
     success_reward = 200
     env_dic = {
@@ -164,6 +164,7 @@ def create_env(task, seed):
     env_cls = env_dic[task]
 
     if 'combat' in task:
+        nav_reward_scale = 0
         env = env_cls(
             step_penalty=step_penalty,
             attack_reward=attack_reward,
@@ -172,7 +173,6 @@ def create_env(task, seed):
         return MineDojoWrapper(env, seed)
 
     if 'milk' in task or 'shear' in task:    
-        nav_reward_scale = 0
         attack_reward = 0
 
     env = env_cls(
