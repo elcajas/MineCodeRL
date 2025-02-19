@@ -308,11 +308,11 @@ class PPOagent:
     def store_experience(self, *args) -> None:
         self.bf.store(*args)
         
-    def process_obs(self, obs, rank):
+    def process_obs(self, obs):
         if not self.train_vision:
             raw_rgb = obs['rgb'].copy()
             with torch.no_grad():
-                rgb_feat = self.get_features(torch.tensor(raw_rgb), rank)            # later check if with torch.no_grad() is required
+                rgb_feat = self.get_features(torch.tensor(raw_rgb))            # later check if with torch.no_grad() is required
 
             pitch = torch.deg2rad(torch.from_numpy(obs['pitch']))
             yaw = torch.deg2rad(torch.from_numpy(obs['yaw']))
@@ -334,7 +334,7 @@ class PPOagent:
             }
             return Batch(**new_obs), obs['rgb'].transpose((0,2,3,1))
     
-    def get_features(self, images: torch.Tensor, rank):
+    def get_features(self, images: torch.Tensor):
         # calculated from 21K video clips, which contains 2.8M frames
         MC_IMAGE_MEAN = (0.3331, 0.3245, 0.3051)
         MC_IMAGE_STD = (0.2439, 0.2493, 0.2873)
@@ -348,7 +348,7 @@ class PPOagent:
             return self.policy_model.module.image_model(images.to(self.device))
         
         if self.cfg.feature_net_kwargs.rgb_feat.image_model == "gdino":
-            if rank % 2 == 0:
+            if self.device.index % 2 == 0:
                 TEXT_PROMPT = self.cfg.agent.prompt1
             else:
                 TEXT_PROMPT = self.cfg.agent.prompt2
@@ -371,9 +371,9 @@ class PPOagent:
             logits = outputs.decoder_hidden_states[1].transpose(-1,-2)
             return logits
     
-    def get_action_and_value(self, batch, action=None, rank=0):
+    def get_action_and_value(self, batch, action=None):
         img_feat = batch.rgb_feat
-        if self.train_vision: img_feat = self.get_features(batch.rgb_feat, rank)
+        if self.train_vision: img_feat = self.get_features(batch.rgb_feat)
         
         hidden, _ = self.policy_model.module.network_model(Batch(rgb_feat=img_feat, compass=batch.compass, gps=batch.gps))
         logits, _ = self.policy_model.module.actor(hidden)
@@ -387,9 +387,9 @@ class PPOagent:
 
         return action, logprob, entropy, value
     
-    def get_value(self, batch, rank):
+    def get_value(self, batch):
         img_feat = batch.rgb_feat
-        if self.train_vision: img_feat = self.get_features(batch.rgb_feat, rank)
+        if self.train_vision: img_feat = self.get_features(batch.rgb_feat)
 
         hidden, _ = self.policy_model.module.network_model(Batch(rgb_feat=img_feat, compass=batch.compass, gps=batch.gps))
         value, _ = self.policy_model.module.critic(hidden)
@@ -434,11 +434,11 @@ class PPOagent:
         rews[-2:] = torch.zeros(2, self.bf.rewards.size(1))
         self.bf.rewards = rews
 
-    def learn(self, last_obs, last_done, writer: SummaryWriter, global_step, rank):
+    def learn(self, last_obs, last_done, writer: SummaryWriter, global_step):
 
         self.shift_rewards()
         with torch.no_grad():
-            last_value = self.get_value(last_obs, rank).reshape(1, -1)
+            last_value = self.get_value(last_obs).reshape(1, -1)
             self.bf.calc_adv_and_return(last_value, last_done)
         
         b_obss, b_actions, b_logprobs, b_advantages, b_returns, b_values =  self.bf.get_batch()
@@ -455,7 +455,7 @@ class PPOagent:
                 if end == self.batch_size:
                     logging.info(f"Update [{epoch+1}/{self.epochs}] for minibatch: [{end}/{self.batch_size}]")
 
-                _, newlogprob, entropy, newvalue = self.get_action_and_value(b_obss[mb_inds], b_actions.long()[mb_inds], rank)
+                _, newlogprob, entropy, newvalue = self.get_action_and_value(b_obss[mb_inds], b_actions.long()[mb_inds])
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 
@@ -508,7 +508,7 @@ class PPOagent:
         var_y = np.var(y_true)
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
 
-        if rank == 0:
+        if self.device.index == 0:
             writer.add_scalar("charts/learning_rate", self.optimizer.param_groups[0]["lr"], global_step)
             writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
             writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)

@@ -119,7 +119,7 @@ def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname, port)
                         writer.add_scalar("charts/episodic_return", ep_rew, global_step)
                         writer.add_scalar("charts/episodic_length", ep_len, global_step)
 
-        agent.learn(last_obs=obs, last_done=next_done, writer=writer, global_step=global_step, rank=rank)
+        agent.learn(last_obs=obs, last_done=next_done, writer=writer, global_step=global_step)
         if rank == 0:
             if num_updates < 40:
                 agent.save_model(update+1)
