@@ -19,11 +19,13 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-def setup_ddp(rank, worlds_size):
+import socket
+
+def setup_ddp(rank, worlds_size, port):
     """Initialize DistributedDataParallel (DDP) for multi-GPU training."""
     dist.init_process_group(
         backend='nccl',
-        init_method='tcp://127.0.0.1:23456',
+        init_method=f'tcp://127.0.0.1:{port}',
         rank=rank,
         world_size=worlds_size
     )
@@ -32,7 +34,7 @@ def cleanup_ddp():
     """Cleanup DistributedDataParallel (DDP) resources."""
     dist.destroy_process_group()
 
-def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname):
+def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname, port):
 
     sys.stderr = open(results_dir+'/err.e', 'w')
     log_file = f"{cfg.results_dir}/output_{rank}.log"
@@ -44,7 +46,7 @@ def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname):
     )
     logging.info(f"Rank {rank} started training.")
     """Train the agent using DDP."""
-    setup_ddp(rank, world_size)
+    setup_ddp(rank, world_size, port)
     # Set the CUDA device for the current process
     device = torch.device(f'cuda:{devices[rank]}')
     torch.cuda.set_device(device)
@@ -173,4 +175,8 @@ if __name__ == "__main__":
         devices = list(range(torch.cuda.device_count()))
     print(f'Devices for training: {devices}')
     world_size = len(devices)
-    mp.spawn(ddp_train, args=(devices, world_size, cfg, results_dir, suf_add, dname), nprocs=world_size, join=True) 
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(('', 0))
+        port = s.getsockname()[1]
+        print(f"port: {port}")
+    mp.spawn(ddp_train, args=(devices, world_size, cfg, results_dir, suf_add, dname, port), nprocs=world_size, join=True)
