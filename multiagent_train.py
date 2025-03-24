@@ -105,7 +105,7 @@ def ddp_train(rank, devices, world_size, cfg, results_dir, suf_add, dname, port)
             agent.store_experience(obs, action, logprob, torch.tensor(reward), next_done, val.squeeze(), frame)
 
             obs, frame = agent.process_obs(next_obs)
-            next_done = torch.Tensor(done).to(rank)
+            next_done = torch.Tensor(done).to(device)
 
             if "final_info" in info:
                 for ind, agent_info in enumerate(info["final_info"]):
@@ -158,7 +158,7 @@ if __name__ == "__main__":
     suf_add = f'only-ppo_{cfg.feature_net_kwargs.rgb_feat.image_model}-multiagent'
     if cfg.agent.train_image_model: suf_add = f'train-imgppo_{cfg.feature_net_kwargs.rgb_feat.image_model}-multiagent'
     
-    devices = cfg.agent.devices
+    devices = OmegaConf.to_container(cfg.agent.devices) if not isinstance(cfg.agent.devices, str) else cfg.agent.devices
     if not isinstance(devices, list):
         devices = list(range(torch.cuda.device_count()))
     print(f'Devices for training: {devices}')

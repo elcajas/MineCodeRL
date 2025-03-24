@@ -16,7 +16,7 @@ class MilkCowDenseRewardEnv(AnimalZooDenseRewardWrapper):
         success_reward: float | int,
     ):
         
-        max_spawn_range = 20            # changed. Before 10.
+        max_spawn_range = 10            # changed. Before 10.
         distance_to_axis = int(max_spawn_range / np.sqrt(2))
         spawn_range_low = (-distance_to_axis, 1, -distance_to_axis)
         spawn_range_high = (distance_to_axis, 1, distance_to_axis)
