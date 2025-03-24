@@ -1,0 +1,133 @@
+feature_net_kwargs:
+  rgb_feat:
+    cls: DummyImgFeat
+    output_dim: 512
+    image_model: gdino  # Image models: mineclip, gdino, hf_gdino, image_encoder
+  compass:
+    cls: CompassMLP
+    input_dim: 4
+    hidden_dim: 128
+    output_dim: 128
+    hidden_depth: 2
+  gps:
+    cls: GPSMLP
+    hidden_dim: 128
+    output_dim: 128
+    hidden_depth: 2
+  # voxels:
+  #   cls: FlattenedVoxelBlockEncoder
+  #   embed_dim: 8
+  #   hidden_dim: 128
+  #   output_dim: 128
+  #   hidden_depth: 2
+  # biome_id:
+  #   cls: BiomeIDEmb
+  #   embed_dim: 8
+  # prev_action:
+  #   cls: PrevActionEmb
+  #   embed_dim: 8
+  # prompt:
+  #   cls: PromptEmbFeat
+  #   output_dim: 512
+
+feature_fusion:
+  output_dim: 512
+  hidden_depth: 0
+
+actor:
+  hidden_dim: 256
+  hidden_depth: 3
+
+critic:
+  hidden_dim: 256
+  hidden_depth: 3
+
+mineclip:
+  arch: "vit_base_p16_fz.v2.t2"
+  hidden_dim: 512
+  image_feature_dim: 512
+  mlp_adapter_spec: "v0-2.t0"
+  pool_type: "attn.d2.nh8.glusw"  # filled by variant
+  resolution: [160, 256]
+  ckpt:
+    path:  /home/kenjic/documents/MinedojoPPO/weights/mineclip_weights/attn.pth # filled by users
+    checksum: "b5ece9198337cfd117a3bfbd921e56da"
+
+groundingdino:
+  ckpt: /home/kenjic/documents/MinedojoPPO/weights/gdino_weights/groundingdino_swint_ogc.pth # filled by user
+  setfile: /home/kenjic/documents/MinedojoPPO/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py # filled by user
+
+agent:
+  task: "combat spider"
+  prompt: "spider . sword . sky . mob . tree ."
+  num_envs: 2
+  total_timesteps: 250000
+  num_steps: 260
+  num_minibatches: 10
+  learning_epochs: 10
+  clip_vloss: false
+  return_norm: false
+
+  load_ppo_model: false
+  ppo_checkpoint_path: ""
+  load_image_model: false
+  image_checkpoint_path: ""
+
+  multigpu: true
+  devices: "all"
+  train_image_model: false
+  lora_rank: 64
+  lora_alpha: 64
+
+  autocast_flag: false
+  cuda_number: 0
+  server_name: "Beryllium"
+
+  policy_learning_rate: !!float 1e-4 #1e-4
+  vision_learning_rate: !!float 1e-4 #1e-4
+  min_lr: !!float 1e-6
+  gamma: 0.99
+  gae_lambda: 0.95
+  seed: 1
+  clip_coef: 0.2
+  ent_coef: 0.005
+  vf_coef: 0.5
+  max_grad_norm: 10
+  target_kl: 0.015
+
+debug: false
+
+ppo_buffer:
+  buffer_size: 15000
+  number_actions: 89
+
+si_buffer:
+  buffer_size: 50
+  buffer_mean: 0.1
+  buffer_std: 0
+  buffer_delta: 0
+
+hyperparameters:
+  task: ""
+  epochs: 20
+  batch_size: 5000
+
+  video_min_rew: 32
+
+  load_checkpoint: false
+  checkpoint_dir: ""
+  checkpoint_epoch: 0
+
+  imitation_learning: false
+  demos_path: ""
+  
+  file_logging: true
+  wandb_init: true
+
+
+# hydra: 
+#   job:
+#     chdir: true
+#   run:
+#     dir: .
+#   output_subdir: null
